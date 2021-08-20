@@ -43,7 +43,7 @@ class MyDataCreator:
 
     def MD_result_load(self):
         # dataload
-        data_root = '/gs/hs0/tga-science/lee/master_research/frames'
+        data_root = '/gs/hs0/tga-science/lee/master_research/frames/'
         # 1byg
         traj_1byg_0 = md.load(data_root + '1byg_0.pdb')
         traj_1byg_1 = md.load(data_root + '1byg_1.pdb')

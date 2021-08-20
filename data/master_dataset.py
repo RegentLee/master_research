@@ -38,7 +38,6 @@ class MasterDataset(BaseDataset):
         parser.add_argument('--matrix', type=str, default='Cb', help='input matrix')
         parser.add_argument('--LOOid', type=int, default=-1, help='Leave-one-out cross-validation id')
         
-        parser.set_defaults(dataroot='./frames')  # specify dataset-specific default values
         parser.set_defaults(input_nc=1, output_nc=1)  # specify dataset-specific default values
         
         return parser
