@@ -84,33 +84,11 @@ class MasterDataset(BaseDataset):
         # data_B = torch.Tensor(self.data.data_B)    # needs to be a tensor
         data_A = [self.transform(i) for i in self.data.data_A]
         data_B = [self.transform(i) for i in self.data.data_B]
-        if self.loo_id < 0:
-            data_A_3 = data_A[index % len(data_A)]
-            data_val = data_A[0]
-            data_B_3 = data_B[index % len(data_B)]
-            data_val_true = data_B[0]
-        else:
-            data_A_1 = data_A[:self.loo_id]
-            data_A_2 = data_A[self.loo_id + 1:]
-            data_A_3 = (data_A_1 + data_A_2)[index % (len(data_A) - 1)]
-
-            data_B_1 = data_B[:self.loo_id]
-            data_B_2 = data_B[self.loo_id + 1:]
-            data_B_3 = (data_B_1 + data_B_2)[index % (len(data_B) - 1)]
-
-            data_val = data_A[self.loo_id]
-            data_val_true = data_B[self.loo_id]
-        
-        # print(len(data_A))
-        # print(len(data_B))
-        # data_A_3 = (data_A_1 + data_A_2)[index % (len(data_A) - 1)]
+        data_A = data_A[index % len(data_A)]
         data_B = data_B[index % len(data_B)]
-        # print(data_A[0].size())
-        return {'A': data_A_3, 'B': data_B_3, 'A_paths': path, 'B_paths': path, 'val':data_val, 'val_true':data_val_true}
+        
+        return {'A': data_A, 'B': data_B, 'A_paths': path, 'B_paths': path}
 
     def __len__(self):
         """Return the total number of images."""
-        if self.loo_id == -1:
-            return 16
-        else:
-            return 22
+        return len(self.data.data_A) + len(self.data.data_B)
