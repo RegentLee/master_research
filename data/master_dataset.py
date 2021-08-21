@@ -91,4 +91,4 @@ class MasterDataset(BaseDataset):
 
     def __len__(self):
         """Return the total number of images."""
-        return len(self.data.data_A) + len(self.data.data_B)
+        return max(len(self.data.data_A), len(self.data.data_B))
