@@ -37,6 +37,7 @@ class MasterDataset(BaseDataset):
 
         parser.add_argument('--matrix', type=str, default='Cb', help='input matrix')
         parser.add_argument('--LOOid', type=int, default=-1, help='Leave-one-out cross-validation id')
+        parser.add_argument('--_val', type=bool, default=False)
         
         parser.set_defaults(input_nc=1, output_nc=1)  # specify dataset-specific default values
         
@@ -63,8 +64,12 @@ class MasterDataset(BaseDataset):
         data = my_data_creator.MyDataCreator(opt)
         transform = transforms.ToTensor()
 
-        self.data_A = [transform(i) for i in data.data_A]
-        self.data_B = [transform(i) for i in data.data_B]
+        if not opt._val:
+            self.data_A = [transform(i) for i in data.data_A]
+            self.data_B = [transform(i) for i in data.data_B]
+        else:
+            self.data_A = [transform(i) for i in data.val_A]
+            self.data_B = [transform(i) for i in data.val_B]
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.

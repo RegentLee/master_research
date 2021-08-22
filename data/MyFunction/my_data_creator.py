@@ -33,15 +33,15 @@ class MyDataCreator:
         self.data_B = [self.preprocess(i, input_n) for i in self.data_B]
 
         if self.loo_id < 0:
-            self.val_A = self.data_A[0]
-            self.val_B = self.data_B[0]
+            self.val_A = [self.data_A[0]]
+            self.val_B = [self.data_B[0]]
         else:
-            self.val_A = self.data_A[self.loo_id]
-            self.val_B = self.data_B[self.loo_id//3]
+            self.val_A = [self.data_A[self.loo_id]]
+            self.val_B = [self.data_B[self.loo_id//3]]
             self.data_A = self.data_A[:self.loo_id] + self.data_A[self.loo_id + 1:]
             '''
-            self.val_A = self.data_A[self.loo_id]
-            self.val_B = self.data_B[self.loo_id]
+            self.val_A = [self.data_A[self.loo_id]]
+            self.val_B = [self.data_B[self.loo_id]]
             self.data_A = self.data_A[:self.loo_id] + self.data_A[self.loo_id + 1:]
             self.data_B = self.data_B[:self.loo_id] + self.data_B[self.loo_id + 1:]
             '''
