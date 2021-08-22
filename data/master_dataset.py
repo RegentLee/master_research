@@ -60,10 +60,11 @@ class MasterDataset(BaseDataset):
         # define the default transform function. You can use <base_dataset.get_transform>; You can also define your custom transform function
         # self.transform = get_transform(opt)
         
-        self.data = my_data_creator.MyDataCreator(opt)
-        self.transform = transforms.ToTensor()
-        self.loo_id = opt.LOOid 
-        
+        data = my_data_creator.MyDataCreator(opt)
+        transform = transforms.ToTensor()
+
+        self.data_A = [transform(i) for i in data.data_A]
+        self.data_B = [transform(i) for i in data.data_B]
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -82,13 +83,11 @@ class MasterDataset(BaseDataset):
         path = 'temp'    # needs to be a string
         # data_A = torch.Tensor(self.data.data_A)    # needs to be a tensor
         # data_B = torch.Tensor(self.data.data_B)    # needs to be a tensor
-        data_A = [self.transform(i) for i in self.data.data_A]
-        data_B = [self.transform(i) for i in self.data.data_B]
-        data_A = data_A[index % len(data_A)]
-        data_B = data_B[index % len(data_B)]
+        A = self.data_A[index % len(self.data_A)]
+        B = self.data_B[index % len(self.data_B)]
         
-        return {'A': data_A, 'B': data_B, 'A_paths': path, 'B_paths': path}
+        return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 
     def __len__(self):
         """Return the total number of images."""
-        return max(len(self.data.data_A), len(self.data.data_B))
+        return max(len(self.data_A), len(self.data_B))
