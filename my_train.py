@@ -26,6 +26,11 @@ from util.visualizer import Visualizer
 
 import numpy as np
 
+def RMSD(A, B):
+    mse = np.sum(np.power(A - B, 2))/A.size()
+    return np.sqrt(mse)
+
+
 if __name__ == '__main__':
     opt = TrainOptions().parse()   # get training options
     dataset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
@@ -93,5 +98,8 @@ if __name__ == '__main__':
             model.set_input(data)
             model.test()
             answer = model.fake_B.to('cpu').detach().numpy().copy()
-            rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
-            print(rmsd)
+            org = RMSD(data['A'].numpy(), data['B'].numpy())
+            last = RMSD(data['A'].numpy(), answer)
+            first = RMSD(answer, data['B'].numpy())
+            # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
+            print(org, last, first)
