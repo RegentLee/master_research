@@ -27,7 +27,7 @@ from util.visualizer import Visualizer
 import numpy as np
 
 def RMSD(A, B):
-    mse = np.sum(np.power(A - B, 2))/A.size()
+    mse = np.sum(np.power(A - B, 2)/A.size)
     return np.sqrt(mse)
 
 
