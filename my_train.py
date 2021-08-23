@@ -51,7 +51,7 @@ if __name__ == '__main__':
         for name in model.model_names:
             if isinstance(name, str):
                 net = getattr(model, 'net' + name)
-                net.eval()
+                net.train()
         model.update_learning_rate()    # update learning rates in the beginning of every epoch.
         for i, data in enumerate(dataset):  # inner loop within one epoch
             iter_start_time = time.time()  # timer for computation per iteration
