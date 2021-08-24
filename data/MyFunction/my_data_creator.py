@@ -13,6 +13,7 @@ class MyDataCreator:
 
         self.matrix = my_get_matrix(opt)
         self.loo_id = opt.LOOid
+        self.diff = opt.diff
 
         self.process()
 
@@ -37,14 +38,12 @@ class MyDataCreator:
             self.val_B = [self.data_B[0]]
         else:
             self.val_A = [self.data_A[self.loo_id]]
-            self.val_B = [self.data_B[self.loo_id//3]]
             self.data_A = self.data_A[:self.loo_id] + self.data_A[self.loo_id + 1:]
-            '''
-            self.val_A = [self.data_A[self.loo_id]]
-            self.val_B = [self.data_B[self.loo_id]]
-            self.data_A = self.data_A[:self.loo_id] + self.data_A[self.loo_id + 1:]
-            self.data_B = self.data_B[:self.loo_id] + self.data_B[self.loo_id + 1:]
-            '''
+            if not self.diff:
+                self.val_B = [self.data_B[self.loo_id//3]]
+            else:
+                self.val_B = [self.data_B[self.loo_id]]
+                self.data_B = self.data_B[:self.loo_id] + self.data_B[self.loo_id + 1:]
 
 
     def MD_result_load(self):
@@ -82,12 +81,13 @@ class MyDataCreator:
     def make_matrix(self):
         for i in range(len(self.__temp)):
             first = self.matrix(self.__temp[i][0])
-            # self.data_A.append(last)
-            self.data_B.append(first)
+            if not self.diff:
+                self.data_B.append(first)
             for j in range(1, len(self.__temp[i])):
                 last = self.matrix(self.__temp[i][j])
                 self.data_A.append(last)
-                # self.data_B.append(first - last)
+                if self.diff:
+                    self.data_B.append(first - last)
 
     def preprocess(self, image, input_n):
         image = image.astype('float32')
