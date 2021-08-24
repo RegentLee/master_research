@@ -14,6 +14,7 @@ class MyDataCreator:
         self.matrix = my_get_matrix(opt)
         self.loo_id = opt.LOOid
         self.diff = opt.diff
+        self.model = opt.model
 
         self.process()
 
@@ -33,6 +34,9 @@ class MyDataCreator:
         self.data_A = [self.preprocess(i, input_n) for i in self.data_A]
         self.data_B = [self.preprocess(i, input_n) for i in self.data_B]
 
+        if self.model == 'pix2pix':
+            self.data_B = [self.data_B[i//3] for i in range(len(self.data_A))]
+        
         if self.diff:
             self.data_B = [self.data_B[i//3] - self.data_A[i] for i in range(len(self.data_A))]
 
