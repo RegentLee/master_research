@@ -33,6 +33,9 @@ class MyDataCreator:
         self.data_A = [self.preprocess(i, input_n) for i in self.data_A]
         self.data_B = [self.preprocess(i, input_n) for i in self.data_B]
 
+        if self.diff:
+            self.data_B = [self.data_B[i//3] - self.data_A[i] for i in range(len(self.data_A))]
+
         if self.loo_id < 0:
             self.val_A = [self.data_A[0]]
             self.val_B = [self.data_B[0]]
@@ -81,13 +84,10 @@ class MyDataCreator:
     def make_matrix(self):
         for i in range(len(self.__temp)):
             first = self.matrix(self.__temp[i][0])
-            if not self.diff:
-                self.data_B.append(first)
+            self.data_B.append(first)
             for j in range(1, len(self.__temp[i])):
                 last = self.matrix(self.__temp[i][j])
                 self.data_A.append(last)
-                if self.diff:
-                    self.data_B.append(first - last)
 
     def preprocess(self, image, input_n):
         image = image.astype('float32')
