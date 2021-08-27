@@ -47,7 +47,8 @@ if __name__ == '__main__':
     visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
     total_iters = 0                # the total number of training iterations
 
-    result = []
+    result_train = []
+    result_val = []
 
     for epoch in range(opt.epoch_count, opt.n_epochs + opt.n_epochs_decay + 1):    # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
         epoch_start_time = time.time()  # timer for entire epoch
@@ -97,6 +98,18 @@ if __name__ == '__main__':
         print('End of epoch %d / %d \t Time Taken: %d sec' % (epoch, opt.n_epochs + opt.n_epochs_decay, time.time() - epoch_start_time))
 
         model.eval()
+        temp = np.zeros(3)
+        for i, data in enumerate(dataset):
+            model.set_input(data)
+            model.test()
+            answer = model.fake_B.to('cpu').detach().numpy().copy()
+            org = RMSD(data['A'].numpy(), data['B'].numpy())
+            last = RMSD(data['A'].numpy(), answer)
+            first = RMSD(answer, data['B'].numpy())
+            temp += np.array([org, last, first])
+            # print(org, last, first)
+        result_train.append(list(temp/dataset_size))
+
         for i, data in enumerate(valset):
             model.set_input(data)
             model.test()
@@ -104,9 +117,12 @@ if __name__ == '__main__':
             org = RMSD(data['A'].numpy(), data['B'].numpy())
             last = RMSD(data['A'].numpy(), answer)
             first = RMSD(answer, data['B'].numpy())
-            result.append([org, last, first])
+            result_val.append([org, last, first])
             # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
             print(org, last, first)
 
-    result = pd.DataFrame(result)
-    result.to_csv('result.csv')
+    result_train = pd.DataFrame(result_train)
+    result_train.to_csv('result/result_train.csv')
+
+    result_val = pd.DataFrame(result_val)
+    result_train.to_csv('result/result_val_' + str(opt.LOOid) + '.csv')
