@@ -25,6 +25,7 @@ from models import create_model
 from util.visualizer import Visualizer
 
 import numpy as np
+import pandas as pd
 
 def RMSD(A, B):
     mse = np.sum(np.power(A - B, 2)/A.size)
@@ -45,6 +46,8 @@ if __name__ == '__main__':
     model.setup(opt)               # regular setup: load and print networks; create schedulers
     visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
     total_iters = 0                # the total number of training iterations
+
+    result = []
 
     for epoch in range(opt.epoch_count, opt.n_epochs + opt.n_epochs_decay + 1):    # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
         epoch_start_time = time.time()  # timer for entire epoch
@@ -101,5 +104,9 @@ if __name__ == '__main__':
             org = RMSD(data['A'].numpy(), data['B'].numpy())
             last = RMSD(data['A'].numpy(), answer)
             first = RMSD(answer, data['B'].numpy())
+            result.append([org, last, first])
             # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
             print(org, last, first)
+
+    result = pd.DataFrame(result)
+    result.to_csv('result.csv')
