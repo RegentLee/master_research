@@ -122,7 +122,7 @@ if __name__ == '__main__':
             print(org, last, first)
 
     result_train = pd.DataFrame(result_train)
-    result_train.to_csv('result/result_train.csv')
+    result_train.to_csv('result/result_train_' + str(opt.LOOid) + '.csv')
 
     result_val = pd.DataFrame(result_val)
     result_val.to_csv('result/result_val_' + str(opt.LOOid) + '.csv')
