@@ -17,7 +17,7 @@ from data.base_dataset import BaseDataset, get_transform
 import torch
 import torchvision.transforms as transforms
 from data.MyFunction import my_data_creator
-
+import random
 
 class MasterDataset(BaseDataset):
     """A template dataset class for you to implement custom datasets."""
@@ -90,7 +90,9 @@ class MasterDataset(BaseDataset):
         # data_A = torch.Tensor(self.data.data_A)    # needs to be a tensor
         # data_B = torch.Tensor(self.data.data_B)    # needs to be a tensor
         A = self.data_A[index % len(self.data_A)]
-        B = self.data_B[index % len(self.data_B)]
+
+        index_B = random.randint(0, len(self.data_B) - 1)
+        B = self.data_B[index_B]
         
         return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 
