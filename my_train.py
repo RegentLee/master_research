@@ -110,6 +110,7 @@ if __name__ == '__main__':
             # print(org, last, first)
         result_train.append(list(temp/dataset_size))
 
+        temp = np.zeros(3)
         for i, data in enumerate(valset):
             model.set_input(data)
             model.test()
@@ -117,9 +118,10 @@ if __name__ == '__main__':
             org = RMSD(data['A'].numpy(), data['B'].numpy())
             last = RMSD(data['A'].numpy(), answer)
             first = RMSD(answer, data['B'].numpy())
-            result_val.append([org, last, first])
+            temp += np.array([org, last, first])
             # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
-            print(org, last, first)
+        print(temp/valset_size)
+        result_val.append(list(temp/valset_size))
 
     result_train = pd.DataFrame(result_train)
     result_train.to_csv('result/result_train_' + str(opt.LOOid) + '.csv')
