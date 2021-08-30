@@ -41,13 +41,14 @@ class MyDataCreator:
             self.data_B = [self.data_B[i//3] - self.data_A[i] for i in range(len(self.data_A))]
 
         if self.loo_id < 0:
-            self.val_A = [self.data_A[0]]
+            self.val_A = [self.data_A[i] for i in range(3)]
             self.val_B = [self.data_B[0]]
         else:
-            self.val_A = [self.data_A[self.loo_id]]
-            self.data_A = self.data_A[:self.loo_id] + self.data_A[self.loo_id + 1:]
+            self.val_A = [self.data_A[i] for i in range(self.loo_id*3, self.loo_id*3 + 3)]
+            self.data_A = self.data_A[:self.loo_id*3] + self.data_A[self.loo_id*3 + 3:]
             if not self.diff:
-                self.val_B = [self.data_B[self.loo_id//3]]
+                self.val_B = [self.data_B[self.loo_id]]
+                self.data_B = self.data_B[:self.loo_id] + self.data_B[self.loo_id + 1:]
             else:
                 self.val_B = [self.data_B[self.loo_id]]
                 self.data_B = self.data_B[:self.loo_id] + self.data_B[self.loo_id + 1:]
