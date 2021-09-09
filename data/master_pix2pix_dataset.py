@@ -139,12 +139,13 @@ class MasterPix2PixDataset(BaseDataset):
             for j in self.data_B:
                 self.B += my_transforms.crop(self.x, self.y, j)
 
-        A = self.data_A[index % len(self.data_A)]
+        A = self.data_A[index % len(self.A)]
 
-        B = self.data_B[index % len(self.data_B)]
+        B = self.data_B[index % len(self.B)]
         
         return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 
     def __len__(self):
         """Return the total number of images."""
-        return max(len(self.data_A), len(self.data_B))
+        return max(len(self.A), len(self.B))
+

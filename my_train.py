@@ -54,8 +54,9 @@ if __name__ == '__main__':
         iter_data_time = time.time()    # timer for data loading per iteration
         epoch_iter = 0                  # the number of training iterations in current epoch, reset to 0 every epoch
         visualizer.reset()              # reset the visualizer: make sure it saves the results to HTML at least once every epoch
-        # model.train()
-        # opt.isTrain = True
+        
+        my_util.x = np.random.randint(0, 64)
+        my_util.y = np.random.randint(0, 64)
         for name in model.model_names:
             if isinstance(name, str):
                 net = getattr(model, 'net' + name)

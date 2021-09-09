@@ -22,6 +22,8 @@ class rotate:
         return image
 
 def crop(x, y, img):
+    x = x % (len(img)%64)
+    y = y % (len(img)%64)
     img_size = len(img)
     crop_img = []
     for i in range(x, img_size, 64):
