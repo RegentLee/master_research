@@ -99,11 +99,11 @@ class MasterPix2PixDataset(BaseDataset):
             data_B = data_B[:opt.LOOid*3] + data_B[opt.LOOid*3 + 3:]
 
         if not my_util.val:
-            self.data_A = [transform(i) for i in data_A]
-            self.data_B = [transform(i) for i in data_B]
+            self.data_A = [transform_A(i) for i in data_A]
+            self.data_B = [transform_B(i) for i in data_B]
         else:
-            self.data_A = [transform(i) for i in val_A]
-            self.data_B = [transform(i) for i in val_B]
+            self.data_A = [transform_A(i) for i in val_A]
+            self.data_B = [transform_B(i) for i in val_B]
 
         self.x = my_util.x
         self.y = my_util.y
