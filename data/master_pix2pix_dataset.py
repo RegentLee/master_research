@@ -16,10 +16,12 @@ from data.base_dataset import BaseDataset, get_transform
 # from PIL import Image
 import torch
 import torchvision.transforms as transforms
-from data.MyFunction import my_data_creator
-import random
 
-class MasterDataset(BaseDataset):
+from data.MyFunction import my_data_creator
+from data.MyFunction import my_transforms
+from util import my_util
+
+class MasterPix2PixDataset(BaseDataset):
     """A template dataset class for you to implement custom datasets."""
     @staticmethod
     def modify_commandline_options(parser, is_train):
@@ -37,7 +39,6 @@ class MasterDataset(BaseDataset):
 
         parser.add_argument('--matrix', type=str, default='Cb', help='input matrix')
         parser.add_argument('--LOOid', type=int, default=-1, help='Leave-one-out cross-validation id')
-        parser.add_argument('--_val', type=bool, default=False)
         parser.add_argument('--diff', type=bool, default=False)
 
         parser.set_defaults(input_nc=1, output_nc=1)  # specify dataset-specific default values
@@ -63,14 +64,52 @@ class MasterDataset(BaseDataset):
         # self.transform = get_transform(opt)
         
         data = my_data_creator.MyDataCreator(opt)
-        transform = transforms.ToTensor()
 
-        if not opt._val:
-            self.data_A = [transform(i) for i in data.data_A]
-            self.data_B = [transform(i) for i in data.data_B]
+        matrix_size = [len(i) for i in data.data_A]
+        input_n = max(matrix_size)
+        
+        for i in range(4):
+            if input_n%4 == 0:
+                break
+            input_n += 1
+        
+        transform = transforms.Compose([
+            my_transforms.preprocess(input_n),
+            transforms.ToTensor()
+            ])
+
+        data_A = data.data_A
+        if opt.diff:
+            data_B = [data.data_B[i//3] - data_A[i] for i in range(len(data_A))]
         else:
-            self.data_A = [transform(i) for i in data.val_A]
-            self.data_B = [transform(i) for i in data.val_B]
+            data_B = [data.data_B[i//3] for i in range(len(data_A))]
+
+        if opt.LOOid < 0:
+            val_A = [data_A[i] for i in range(3)]
+            val_B = [data_B[i] for i in range(3)]
+        else:
+            val_A = [data_A[i] for i in range(opt.LOOid*3, opt.LOOid*3 + 3)]
+            data_A = data_A[:opt.LOOid*3] + data_A[opt.LOOid*3 + 3:]                
+            val_B = data_B[opt.LOOid*3:opt.LOOid*3 + 3]
+            data_B = data_B[:opt.LOOid*3] + data_B[opt.LOOid*3 + 3:]
+
+        if not my_util.val:
+            self.data_A = [transform(i) for i in data_A]
+            self.data_B = [transform(i) for i in data_B]
+        else:
+            self.data_A = [transform(i) for i in val_A]
+            self.data_B = [transform(i) for i in val_B]
+
+        self.x = my_util.x
+        self.y = my_util.y
+        self.A = []
+        self.B = []
+
+        for i in self.data_A:
+            self.A += my_transforms.crop(self.x, self.y, i)
+        for j in self.data_B:
+            self.B += my_transforms.crop(self.x, self.y, j)
+
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -89,10 +128,20 @@ class MasterDataset(BaseDataset):
         path = 'temp'    # needs to be a string
         # data_A = torch.Tensor(self.data.data_A)    # needs to be a tensor
         # data_B = torch.Tensor(self.data.data_B)    # needs to be a tensor
+        if my_util.x != self.x or my_util.y != self.y:
+            self.x = my_util.x
+            self.y = my_util.y
+            self.A = []
+            self.B = []
+
+            for i in self.data_A:
+                self.A += my_transforms.crop(self.x, self.y, i)
+            for j in self.data_B:
+                self.B += my_transforms.crop(self.x, self.y, j)
+
         A = self.data_A[index % len(self.data_A)]
 
-        index_B = random.randint(0, len(self.data_B) - 1)
-        B = self.data_B[index_B]
+        B = self.data_B[index % len(self.data_B)]
         
         return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 

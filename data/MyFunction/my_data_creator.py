@@ -16,42 +16,8 @@ class MyDataCreator:
         self.diff = opt.diff
         self.model = opt.model
 
-        self.process()
-
-
-    def process(self):
         self.MD_result_load()
         self.make_matrix()
-
-        matrix_size = [len(i) for i in self.data_A]
-        input_n = max(matrix_size)
-        
-        for i in range(4):
-            if input_n%4 == 0:
-                break
-            input_n += 1
-        
-        self.data_A = [self.preprocess(i, input_n) for i in self.data_A]
-        self.data_B = [self.preprocess(i, input_n) for i in self.data_B]
-
-        if self.model == 'pix2pix':
-            self.data_B = [self.data_B[i//3] for i in range(len(self.data_A))]
-        
-        if self.diff:
-            self.data_B = [self.data_B[i//3] - self.data_A[i] for i in range(len(self.data_A))]
-
-        if self.loo_id < 0:
-            self.val_A = [self.data_A[i] for i in range(3)]
-            self.val_B = [self.data_B[0]]
-        else:
-            self.val_A = [self.data_A[i] for i in range(self.loo_id*3, self.loo_id*3 + 3)]
-            self.data_A = self.data_A[:self.loo_id*3] + self.data_A[self.loo_id*3 + 3:]
-            if not self.diff:
-                self.val_B = [self.data_B[self.loo_id]]
-                self.data_B = self.data_B[:self.loo_id] + self.data_B[self.loo_id + 1:]
-            else:
-                self.val_B = [self.data_B[self.loo_id]]
-                self.data_B = self.data_B[:self.loo_id] + self.data_B[self.loo_id + 1:]
 
 
     def MD_result_load(self):
@@ -93,12 +59,4 @@ class MyDataCreator:
             for j in range(1, len(self.__temp[i])):
                 last = self.matrix(self.__temp[i][j])
                 self.data_A.append(last)
-
-    def preprocess(self, image, input_n):
-        image = image.astype('float32')
-        image = (image / (np.max(image)/2)) - 1
-        image = np.pad(image, input_n-len(image))
-        image = image[len(image)//2 - input_n//2:len(image)//2 + input_n//2, len(image)//2 - input_n//2:len(image)//2 + input_n//2]
-        # image = image[np.newaxis, :, :]
-        return image
 
