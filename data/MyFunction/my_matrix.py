@@ -28,7 +28,7 @@ def Ca(traj):
 
     temp = md.compute_contacts(traj, scheme='ca')
     d_matrix = md.geometry.squareform(temp[0],temp[1])
-    return d_matrix[0]
+    return 10*d_matrix[0]
 
 def Cb(traj):
     """Calculate the distance matrix with beta Carbon while GLY use alpha Carbon
@@ -70,7 +70,5 @@ def Cb(traj):
             last[i][j] = np.sqrt((x_i - x_j)**2 + (y_i - y_j)**2 + (z_i - z_j)**2)
             last[j][i] = last[i][j]
     '''
-    return first
+    return 10*first
 
-def Ca_xyz(traj):
-    pass

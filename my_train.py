@@ -29,32 +29,6 @@ import pandas as pd
 
 from util import my_util
 
-def RMSD(A, B):
-    mse = np.sum(np.power(A - B, 2)/A.size)
-    return np.sqrt(mse)
-
-def MAE(A, B):
-    A = 59.2/2*(A + 1)
-    B = 59.2/2*(B + 1)
-    mae = np.sum(np.abs(A - B))/B.size
-    return mae
-
-'''def DALI(A, B): not used
-    """Citation:
-    Holm, Liisa. 
-    "DALI and the persistence of protein shape." 
-    Protein Science 29.1 (2020): 128-140.
-    APPENDIX I: SCORES USED IN DALI
-    """
-    DALI_score = 0.2*len(B)
-    A = 10*((A + 1)*3)
-    B = 10*((B + 1)*3)
-    for i in range(len(B)):
-        for j in range(i + 1, len(B)):
-            DALI_score += 2*(0.2 - 2*np.abs(A[i][j] - B[i][j])/(A[i][j] + B[i][j]))*np.exp(-((A[i][j] + B[i][j])/(2*20))**2)
-    m_L = 7.95 + 0.71*len(B) - 0.000259*len(B)**2 - 0.00000192*len(B)**3
-    Z_score = (DALI_score - m_L)/(0.5*m_L)
-    return Z_score'''
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()   # get training options
@@ -71,7 +45,7 @@ if __name__ == '__main__':
     visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
     total_iters = 0                # the total number of training iterations
 
-    score = MAE
+    score = my_util.MAE
     result_train = []
     result_val = []
 
@@ -128,11 +102,13 @@ if __name__ == '__main__':
             model.set_input(data)
             model.test()
             answer = model.fake_B.to('cpu').detach().numpy().copy()
-            org = score(data['A'].numpy(), data['B'].numpy())
-            last = score(data['A'].numpy(), answer)
-            first = score(answer, data['B'].numpy())
+            org = score(data['A'].numpy()[0][0], data['B'].numpy()[0][0])
+            last = score(data['A'].numpy()[0][0], answer[0][0])
+            first = score(answer[0][0], data['B'].numpy()[0][0])
+            # print(np.array([org, last, first]))
             temp += np.array([org, last, first])
             # print(org, last, first)
+        print(temp/dataset_size)
         result_train.append(list(temp/dataset_size))
 
         temp = np.zeros(3)
@@ -140,16 +116,55 @@ if __name__ == '__main__':
             model.set_input(data)
             model.test()
             answer = model.fake_B.to('cpu').detach().numpy().copy()
-            org = score(data['A'].numpy(), data['B'].numpy())
-            last = score(data['A'].numpy(), answer)
-            first = score(answer, data['B'].numpy())
+            # print(answer[0][0])
+            org = score(data['A'].numpy()[0][0], data['B'].numpy()[0][0])
+            last = score(data['A'].numpy()[0][0], answer[0][0])
+            first = score(answer[0][0], data['B'].numpy()[0][0])
             temp += np.array([org, last, first])
+            # print(np.array([org, last, first]))
             # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
         print(temp/valset_size)
         result_val.append(list(temp/valset_size))
+
+        '''model.eval()
+        temp = np.zeros(3)
+        for i, data in enumerate(dataset):
+            model.set_input(data)
+            model.test()
+            answer = model.fake_B.to('cpu').detach().numpy().copy()
+            org = score(0, data['B'].numpy()[0][0])
+            last = score(0, answer[0][0])
+            first = score(answer[0][0], data['B'].numpy()[0][0])
+            # print(np.array([org, last, first]))
+            temp += np.array([org, last, first])
+            # print(org, last, first)
+        print(temp/dataset_size)
+        result_train.append(list(temp/dataset_size))
+
+        temp = np.zeros(3)
+        for i, data in enumerate(valset):
+            model.set_input(data)
+            model.test()
+            answer = model.fake_B.to('cpu').detach().numpy().copy()
+            print(answer[0][0])
+            org = score(0, data['B'].numpy()[0][0])
+            last = score(0, answer[0][0])
+            first = score(answer[0][0], data['B'].numpy()[0][0])
+            temp += np.array([org, last, first])
+            # print(np.array([org, last, first]))
+            # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
+        print(temp/valset_size)
+        result_val.append(list(temp/valset_size))'''
 
     result_train = pd.DataFrame(result_train)
     result_train.to_csv('result/result_train_' + str(opt.LOOid) + '.csv')
 
     result_val = pd.DataFrame(result_val)
     result_val.to_csv('result/result_val_' + str(opt.LOOid) + '.csv')
+    '''
+    for i, data in enumerate(valset):
+        model.set_input(data)
+        model.test()
+        answer = model.fake_B.to('cpu').detach().numpy().copy()
+        answer = pd.DataFrame(answer[0][0])
+        answer.to_csv('result/'+str(i)+'.csv')'''
