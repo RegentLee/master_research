@@ -73,8 +73,13 @@ class MasterPix2PixDataset(BaseDataset):
                 break
             input_n += 1
         
-        transform = transforms.Compose([
+        transform_A = transforms.Compose([
             my_transforms.preprocess(input_n),
+            transforms.ToTensor()
+            ])
+
+        transform_B = transforms.Compose([
+            my_transforms.CE(),
             transforms.ToTensor()
             ])
 
