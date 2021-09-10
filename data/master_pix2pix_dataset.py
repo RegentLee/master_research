@@ -75,7 +75,8 @@ class MasterPix2PixDataset(BaseDataset):
         
         transform_A = transforms.Compose([
             my_transforms.preprocess(input_n),
-            transforms.ToTensor()
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,)),
             ])
 
         transform_B = transforms.Compose([
@@ -100,10 +101,10 @@ class MasterPix2PixDataset(BaseDataset):
 
         if not my_util.val:
             self.data_A = [transform_A(i) for i in data_A]
-            self.data_B = [transform_B(i) for i in data_B]
+            self.data_B = [transform_A(i) for i in data_B]
         else:
             self.data_A = [transform_A(i) for i in val_A]
-            self.data_B = [transform_B(i) for i in val_B]
+            self.data_B = [transform_A(i) for i in val_B]
 
         self.x = my_util.x
         self.y = my_util.y
@@ -144,9 +145,9 @@ class MasterPix2PixDataset(BaseDataset):
             for j in self.data_B:
                 self.B += my_transforms.crop(self.x, self.y, j)
 
-        A = self.data_A[index % len(self.A)]
+        A = self.A[index % len(self.A)]
 
-        B = self.data_B[index % len(self.B)]
+        B = self.B[index % len(self.B)]
         
         return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 

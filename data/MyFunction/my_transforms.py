@@ -7,7 +7,8 @@ class preprocess:
         
     def __call__(self, image):
         image = image.astype('float32')
-        image = (image / (np.max(image)/2)) - 1
+        # image = (image / (np.max(image)/2)) - 1
+        image = (image - np.min(image))/(np.max(image) - np.min(image))
         # image = np.pad(image, self.input_n-len(image))
         # image = image[len(image)//2 - self.input_n//2:len(image)//2 + self.input_n//2, len(image)//2 - self.input_n//2:len(image)//2 + self.input_n//2]
         # image = image[np.newaxis, :, :]
@@ -33,9 +34,9 @@ class CE:
 def crop(x, y, img):
     x = x % (len(img)%64)
     y = y % (len(img)%64)
-    img_size = len(img)
+    img_size = len(img[0])
     crop_img = []
-    for i in range(x, img_size, 64):
-        for j in range(y, img_size, 64):
-            crop_img.append(img[x:x + 64, y:y + 64])
+    for i in range(x, img_size - 64, 64):
+        for j in range(y, img_size - 64, 64):
+            crop_img.append(img[:, i:i + 64, j:j + 64])
     return crop_img
