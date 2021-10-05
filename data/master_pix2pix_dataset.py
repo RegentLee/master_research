@@ -74,47 +74,53 @@ class MasterPix2PixDataset(BaseDataset):
             input_n += 1
         
         transform_A = transforms.Compose([
+            # my_transforms.clip(),
             my_transforms.preprocess(input_n),
             transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
+            # transforms.Normalize((0.5,), (0.5,)),
             ])
 
         transform_B = transforms.Compose([
-            my_transforms.CE(),
+            my_transforms.clip(),
             transforms.ToTensor()
             ])
 
+        # self.Flip = my_transforms.rotate()
+
         data_A = data.data_A
+        # data_A += [my_transforms.rotate(i) for i in data_A]
+        data_B = data.data_B
+        # data_B += [my_transforms.rotate(i) for i in data_B]
         if opt.diff:
-            data_B = [data.data_B[i//3] - data_A[i] for i in range(len(data_A))]
+            data_B = [data_B[i//3] - data_A[i] for i in range(len(data_A))]
         else:
-            data_B = [data.data_B[i//3] for i in range(len(data_A))]
+            data_B = [data_B[i//3] for i in range(len(data_A))]
 
         if opt.LOOid < 0:
             val_A = [data_A[i] for i in range(3)]
             val_B = [data_B[i] for i in range(3)]
         else:
-            val_A = [data_A[i] for i in range(opt.LOOid*3, opt.LOOid*3 + 3)]
+            val_A = data_A[opt.LOOid*3:opt.LOOid*3 + 3]
             data_A = data_A[:opt.LOOid*3] + data_A[opt.LOOid*3 + 3:]                
             val_B = data_B[opt.LOOid*3:opt.LOOid*3 + 3]
             data_B = data_B[:opt.LOOid*3] + data_B[opt.LOOid*3 + 3:]
 
         if not my_util.val:
             self.data_A = [transform_A(i) for i in data_A]
-            self.data_B = [transform_A(i) for i in data_B]
+            self.data_B = [transform_B(i) for i in data_B]
         else:
             self.data_A = [transform_A(i) for i in val_A]
-            self.data_B = [transform_A(i) for i in val_B]
+            self.data_B = [transform_B(i) for i in val_B]
 
         self.x = my_util.x
         self.y = my_util.y
         self.A = []
         self.B = []
 
-        for i in self.data_A:
-            self.A += my_transforms.crop(self.x, self.y, i)
-        for j in self.data_B:
-            self.B += my_transforms.crop(self.x, self.y, j)
+        for i in range(len(self.data_A)):
+            temp = my_transforms.crop(self.x, self.y, self.data_A[i], self.data_B[i])
+            self.A += temp[0]
+            self.B += temp[1]
 
 
     def __getitem__(self, index):
@@ -140,14 +146,15 @@ class MasterPix2PixDataset(BaseDataset):
             self.A = []
             self.B = []
 
-            for i in self.data_A:
-                self.A += my_transforms.crop(self.x, self.y, i)
-            for j in self.data_B:
-                self.B += my_transforms.crop(self.x, self.y, j)
+            for i in range(len(self.data_A)):
+                temp = my_transforms.crop(self.x, self.y, self.data_A[i], self.data_B[i])
+                self.A += temp[0]
+                self.B += temp[1]
+                # print(len(self.data_B), len(self.B))
 
-        A = self.A[index % len(self.A)]
+        A = self.A[index]
 
-        B = self.B[index % len(self.B)]
+        B = self.B[index]
         
         return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 
