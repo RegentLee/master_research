@@ -1,5 +1,12 @@
 import numpy as np
 import random
+import torch
+import torch.nn as nn
+
+from torch.nn import functional as F
+from torch.nn.modules.loss import _WeightedLoss
+from torch import Tensor
+from typing import Callable, Optional
 
 from data.MyFunction import my_transforms
 
@@ -144,3 +151,24 @@ def test(model, data):
     first = score(img, data_B)
 
     return np.array([org, last, first])
+
+
+class CustomCELoss(_WeightedLoss):
+    def __init__(self, weight: Optional[Tensor] = None, size_average=None, ignore_index: int = -100,
+                 reduce=None, reduction: str = 'mean', label_smoothing: float = 0.0) -> None:
+        super(CustomCELoss, self).__init__(weight, size_average, reduce, reduction)
+        self.ignore_index = ignore_index
+        self.label_smoothing = label_smoothing
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        target_m1 = target - 1
+        target_m1 = torch.where(target_m1 < 0, 0, target_m1)
+        target_p1 = target + 1
+        target_p1 = torch.where(target_p1 > category[-1], category[-1], target_p1)
+        error = 0.8*F.cross_entropy(input, target, weight=self.weight,
+                               ignore_index=self.ignore_index, reduction=self.reduction)
+        error += 0.1*F.cross_entropy(input, target_m1, weight=self.weight,
+                               ignore_index=self.ignore_index, reduction=self.reduction)
+        error += 0.1*F.cross_entropy(input, target_p1, weight=self.weight,
+                               ignore_index=self.ignore_index, reduction=self.reduction)
+        return error

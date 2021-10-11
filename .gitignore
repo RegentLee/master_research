@@ -44,4 +44,6 @@ test/data/legacy_serialized.pt
 
 result/
 jobs.*
+*.o*
+*.e*
 

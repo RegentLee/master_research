@@ -88,9 +88,7 @@ class MasterPix2PixDataset(BaseDataset):
         # self.Flip = my_transforms.rotate()
 
         data_A = data.data_A
-        # data_A += [my_transforms.rotate(i) for i in data_A]
         data_B = data.data_B
-        # data_B += [my_transforms.rotate(i) for i in data_B]
         if opt.diff:
             data_B = [data_B[i//3] - data_A[i] for i in range(len(data_A))]
         else:
@@ -106,6 +104,8 @@ class MasterPix2PixDataset(BaseDataset):
             data_B = data_B[:opt.LOOid*3] + data_B[opt.LOOid*3 + 3:]
 
         if not my_util.val:
+            data_A += [my_transforms.rotate(i) for i in data_A]
+            data_B += [my_transforms.rotate(i) for i in data_B]
             self.data_A = [transform_A(i) for i in data_A]
             self.data_B = [transform_B(i) for i in data_B]
         else:

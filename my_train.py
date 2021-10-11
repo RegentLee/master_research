@@ -137,7 +137,7 @@ if __name__ == '__main__':
                 answer = model.image.to('cpu').detach().numpy().copy()
                 prob = model.image.to('cpu').detach().numpy().copy()[0][0]
                 data_A = data['A'].numpy()[0][0]
-                data_A = (data_A + 1)*25
+                data_A = (data_A + 1)*my_util.distance[-1]
                 data_A = clip(data_A)
                 data_B = data['B'].numpy()[0][0]
                 m_max = my_util.distance[-1]
@@ -155,8 +155,8 @@ if __name__ == '__main__':
                 # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
                 # time.sleep(1)
             print(temp/dataset_size)
-            model.compute_visuals()
-            visualizer.display_current_results(model.get_current_visuals(), epoch, False)
+            # model.compute_visuals()
+            # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
             result_train.append(list(temp/dataset_size))
 
             temp = np.zeros(4)
@@ -166,7 +166,7 @@ if __name__ == '__main__':
                 answer = model.image.to('cpu').detach().numpy().copy()
                 prob = model.image.to('cpu').detach().numpy().copy()[0][0]
                 data_A = data['A'].numpy()[0][0]
-                data_A = (data_A + 1)*25
+                data_A = (data_A + 1)*my_util.distance[-1]
                 data_A = clip(data_A)
                 data_B = data['B'].numpy()[0][0]
                 m_max = my_util.distance[-1]
@@ -185,8 +185,8 @@ if __name__ == '__main__':
                 # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
             print(temp/valset_size)
             # if total_iters % opt.display_freq == 0:   # display images on visdom and save images to a HTML file
-            # model.compute_visuals()
-            # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
+            model.compute_visuals()
+            visualizer.display_current_results(model.get_current_visuals(), epoch, False)
             result_val.append(list(temp/valset_size))
         else:
             model.eval()

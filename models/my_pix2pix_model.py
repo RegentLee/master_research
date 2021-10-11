@@ -21,7 +21,10 @@ import functools
 from .base_model import BaseModel
 from . import networks
 
+from torchvision.models.resnet import BasicBlock
+
 from util import my_util
+from .unet import UNet
 
 from torchinfo import summary
 
@@ -67,7 +70,7 @@ class MyPix2PixModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN', 'G_CE', 'D_real', 'D_fake']
+        self.loss_names = ['G_GAN', 'G_CE', 'D']# 'D_real', 'D_fake']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         self.visual_names = ['real_A', 'image', 'real_B_0']
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
@@ -76,11 +79,14 @@ class MyPix2PixModel(BaseModel):
         else:  # during test time, only load G
             self.model_names = ['G']
         # define networks (both generator and discriminator)
-        self.net = MyResnet50Generator(opt.input_nc, opt.output_nc, opt.ngf, 
+        # self.net = MyResNet50Generator(opt.input_nc, opt.output_nc, opt.ngf, 
+        #                         norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
+        #                         use_dropout=(not opt.no_dropout), n_blocks=50)
+        self.net = MyUNetGenerator(opt.input_nc, opt.output_nc, opt.ngf, 
                                 norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
-                                use_dropout=(not opt.no_dropout), n_blocks=50)
+                                use_dropout=(not opt.no_dropout))
         self.netG = networks.init_net(self.net, opt.init_type, opt.init_gain, self.gpu_ids)
-        summary(self.net, input_size=(1, 1, 64, 64))
+        summary(self.net, input_size=(1, 1, 64, 64), depth=10)
         # print(self.net.state_dict()["linear.weight"])
         t = torch.tensor([[1e-9] + my_util.distance], dtype=torch.float32)
         self.net.state_dict()["linear.weight"][:] = t# .to(self.device)
@@ -88,16 +94,16 @@ class MyPix2PixModel(BaseModel):
         #     print(param_tensor, "\t", net.state_dict()[param_tensor].size())
 
         if self.isTrain:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
-            # self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
-            #                               opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
-            netD = ResNet50(opt.input_nc + opt.output_nc, opt.ndf, opt.n_layers_D, norm_layer=networks.get_norm_layer(norm_type=opt.norm))
-            self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
+                                          opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
+            # netD = ResNet(opt.input_nc + opt.output_nc, opt.ndf, opt.n_layers_D, norm_layer=networks.get_norm_layer(norm_type=opt.norm))
+            # self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
             summary(self.netD, input_size=(1, 2, 64, 64))
 
         if self.isTrain:
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
-            self.criterionCE = torch.nn.CrossEntropyLoss()
+            self.criterionCE = my_util.CustomCELoss() # torch.nn.CrossEntropyLoss()
             self.criterionL1 = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -179,6 +185,52 @@ class MyPix2PixModel(BaseModel):
         # print("Model's state_dict:")
         # print(self.net.state_dict()["linear.weight"])
         # print(self.net.state_dict()["linear.bias"])
+
+class MyUNetGenerator(nn.Module):
+    """Create a Unet-based generator"""
+
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
+        """Construct a Unet-based generator
+
+        Parameters:
+            input_nc (int)      -- the number of channels in input images
+            output_nc (int)     -- the number of channels in output images
+            ngf (int)           -- the number of filters in the last conv layer
+            norm_layer          -- normalization layer
+            use_dropout (bool)  -- if use dropout layers
+        """
+        super(MyUNetGenerator, self).__init__()
+
+        model = [UNet(input_nc, 64, False)]
+        
+        model += [nn.Flatten(start_dim=2)]
+
+        self.model = nn.Sequential(*model)
+
+        self.softmax = nn.Softmax(dim=2)
+        self.maxpool = nn.MaxPool1d(64, return_indices=True)
+        self.unpool = nn.MaxUnpool1d(64)
+        self.linear = nn.Linear(64, 1)
+
+    def forward(self, input):
+        """Standard forward"""
+        x_CE = self.model(input).transpose(1, 2)
+        m = self.softmax(x_CE)
+        prob, i = self.maxpool(m)
+        m = self.unpool(prob, i, output_size=x_CE.size())
+        m = self.linear(m)*1.4
+        m_max = my_util.distance[-1] # torch.max(torch.flatten(m))
+        m_min = 0 # torch.min(torch.flatten(m))
+        fake_image = (torch.div(m - m_min, m_max - m_min)*2 - 1).view(-1, 1, 64, 64)
+
+        image = torch.zeros_like(i, dtype=torch.float)
+        image = (2 + (i - 1)*0.32).to(torch.float)
+        image = torch.where(image < 2, torch.Tensor([0.]).cuda(), image)
+        m_max = my_util.distance[-1] # torch.max(torch.flatten(m))
+        m_min = 0 # torch.min(torch.flatten(m))
+        image = (torch.div(image - m_min, m_max - m_min)*2 - 1).view(-1, 1, 64, 64)
+
+        return fake_image, x_CE, image, prob.view(-1, 1, 64, 64)
 
 
 class MyResnet50Generator(nn.Module):
@@ -262,6 +314,54 @@ class MyResnet50Generator(nn.Module):
         image = (torch.div(image - m_min, m_max - m_min)*2 - 1).view(-1, 1, 64, 64)
 
         return fake_image, x_CE, image, prob.view(-1, 1, 64, 64)
+
+class ResNet(nn.Module):
+    
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.InstanceNorm2d): 
+          
+        super(ResNet, self).__init__()
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d   
+
+        self.model = nn.Sequential(
+            nn.Conv2d(input_nc, 64, kernel_size=1),
+            BasicBlock(64, 64, norm_layer=norm_layer),
+            BasicBlock(64, 64, norm_layer=norm_layer),
+            BasicBlock(64, 64, norm_layer=norm_layer),
+
+            BasicBlock(64, 128, 2, downsample=nn.Conv2d(64, 128, 1, stride=2), norm_layer=norm_layer),
+            BasicBlock(128, 128, norm_layer=norm_layer),
+            BasicBlock(128, 128, norm_layer=norm_layer),
+            BasicBlock(128, 128, norm_layer=norm_layer),
+
+            BasicBlock(128, 256, 2, downsample=nn.Conv2d(128, 256, 1, stride=2), norm_layer=norm_layer),
+            BasicBlock(256, 256, norm_layer=norm_layer),
+            BasicBlock(256, 256, norm_layer=norm_layer),
+            BasicBlock(256, 256, norm_layer=norm_layer),
+            BasicBlock(256, 256, norm_layer=norm_layer),
+            BasicBlock(256, 256, norm_layer=norm_layer),
+
+            BasicBlock(256, 512, 2, downsample=nn.Conv2d(256, 512, 1, stride=2), norm_layer=norm_layer),
+            BasicBlock(512, 512, norm_layer=norm_layer),
+            BasicBlock(512, 512, norm_layer=norm_layer),
+
+            nn.AdaptiveAvgPool2d((1, 1))     
+        )
+        
+        # Postreior Block
+        # self.output = nn.Conv2d(2048, 1, 1)
+        self.glob_avg_pool = nn.AdaptiveAvgPool2d((1, 1))        
+        self.fc = nn.Linear(512, 1)
+
+    def forward(self, x):
+        x = self.model(x)
+        
+        # Postreior Block
+        x = x.reshape(x.size(0), -1)
+        x = self.fc(x)
+        return x
 
 class ResNet50(nn.Module):
     

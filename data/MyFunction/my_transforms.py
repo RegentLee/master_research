@@ -11,8 +11,8 @@ class preprocess:
     def __call__(self, image):
         image = image.astype('float32')
         # image = (image / (np.max(image)/2)) - 1
-        image = np.where(image > 50, 50, image)
-        m_max = 50# my_util.distance[-1]
+        m_max = my_util.distance[-1]*2
+        image = np.where(image > m_max, m_max, image)
         m_min = 0
         image = (image - m_min)/(m_max - m_min)*2 - 1
         # image = np.pad(image, self.input_n-len(image))
