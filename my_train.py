@@ -50,8 +50,6 @@ if __name__ == '__main__':
     result_train = []
     result_val = []
 
-    clip = my_transforms.clip()
-
     for epoch in range(opt.epoch_count, opt.n_epochs + opt.n_epochs_decay + 1):    # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
         epoch_start_time = time.time()  # timer for entire epoch
         iter_data_time = time.time()    # timer for data loading per iteration
@@ -60,6 +58,7 @@ if __name__ == '__main__':
         
         my_util.x = np.random.randint(0, 64)
         my_util.y = np.random.randint(0, 64)
+        my_util.val = False
         for name in model.model_names:
             if isinstance(name, str):
                 net = getattr(model, 'net' + name)
@@ -72,15 +71,6 @@ if __name__ == '__main__':
 
             #for name, param in model.net.named_parameters():
             #    print('name : ', name)
-
-            '''if epoch <= opt.n_epochs:
-                for param in model.net.linear.parameters():
-                    param.requires_grad = False
-            else:
-                for param in model.net.linear.parameters():
-                    param.requires_grad = True'''
-            for param in model.net.linear.parameters():
-                param.requires_grad = False
 
             total_iters += opt.batch_size
             epoch_iter += opt.batch_size
@@ -130,26 +120,24 @@ if __name__ == '__main__':
 
         if not opt.diff:
             model.eval()
-            temp = np.zeros(4)
+            my_util.val = True
+            temp = np.zeros(3)
             for i, data in enumerate(dataset):
                 model.set_input(data)
                 model.test()
-                answer = model.image.to('cpu').detach().numpy().copy()
-                prob = model.image.to('cpu').detach().numpy().copy()[0][0]
+                answer = model.fake_B.to('cpu').detach().numpy().copy()
                 data_A = data['A'].numpy()[0][0]
                 data_A = (data_A + 1)*my_util.distance[-1]
-                data_A = clip(data_A)
                 data_B = data['B'].numpy()[0][0]
                 m_max = my_util.distance[-1]
                 m_min = 0
-                data_B = (data_B - m_min)/(m_max - m_min)*2 - 1
+                data_A = np.where(data_A > m_max, m_max, data_A)
                 data_A = (data_A - m_min)/(m_max - m_min)*2 - 1
                 org = score(data_A, data_B)
                 last = score(data_A, answer[0][0])
                 first = score(answer[0][0], data_B)
-                prob_avg = np.sum(prob)/(64*64)
                 # print(np.array([org, last, first]))
-                temp += np.array([org, last, first, prob_avg])
+                temp += np.array([org, last, first])
                 # print(org, last, first)
                 # model.compute_visuals()
                 # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
@@ -159,25 +147,22 @@ if __name__ == '__main__':
             # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
             result_train.append(list(temp/dataset_size))
 
-            temp = np.zeros(4)
+            temp = np.zeros(3)
             for i, data in enumerate(valset):
                 model.set_input(data)
                 model.test()
-                answer = model.image.to('cpu').detach().numpy().copy()
-                prob = model.image.to('cpu').detach().numpy().copy()[0][0]
+                answer = model.fake_B.to('cpu').detach().numpy().copy()
                 data_A = data['A'].numpy()[0][0]
                 data_A = (data_A + 1)*my_util.distance[-1]
-                data_A = clip(data_A)
                 data_B = data['B'].numpy()[0][0]
                 m_max = my_util.distance[-1]
                 m_min = 0
-                data_B = (data_B - m_min)/(m_max - m_min)*2 - 1
+                data_A = np.where(data_A > m_max, m_max, data_A)
                 data_A = (data_A - m_min)/(m_max - m_min)*2 - 1
                 org = score(data_A, data_B)
                 last = score(data_A, answer[0][0])
                 first = score(answer[0][0], data_B)
-                prob_avg = np.sum(prob)/(64*64)
-                temp += np.array([org, last, first, prob_avg])
+                temp += np.array([org, last, first])
                 # model.compute_visuals()
                 # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
                 # time.sleep(1)

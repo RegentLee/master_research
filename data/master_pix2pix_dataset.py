@@ -81,7 +81,8 @@ class MasterPix2PixDataset(BaseDataset):
             ])
 
         transform_B = transforms.Compose([
-            my_transforms.clip(),
+            # my_transforms.clip(),
+            my_transforms.preprocessB(input_n),
             transforms.ToTensor()
             ])
 
@@ -111,6 +112,8 @@ class MasterPix2PixDataset(BaseDataset):
         else:
             self.data_A = [transform_A(i) for i in val_A]
             self.data_B = [transform_B(i) for i in val_B]
+
+        # self.choose = my_transforms.choose()
 
         self.x = my_util.x
         self.y = my_util.y
@@ -155,6 +158,9 @@ class MasterPix2PixDataset(BaseDataset):
         A = self.A[index]
 
         B = self.B[index]
+
+        # if not my_util.val:
+        #     A, B = self.choose(A, B)
         
         return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 

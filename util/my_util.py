@@ -29,8 +29,6 @@ def RMSD(A, B):
     return np.sqrt(mse)
 
 def MAE(A, B):
-    # A = 59.2/2*(A + 1)
-    # B = 59.2/2*(B + 1)
     A = distance[-1]/2*(A + 1)
     B = distance[-1]/2*(B + 1)
     mae = np.sum(np.abs(A - B))/B.size
@@ -114,12 +112,9 @@ def test(model, data):
             for i in range(len(data_A)):
                 img = {'A': data_A[i], 'B': B, 'A_paths': A_paths, 'B_paths': B_paths}
                 model.set_input(img)
-                answer = model.image.to('cpu').detach().numpy().copy()[0][0]
-                prob_c = model.prob.to('cpu').detach().numpy().copy()[0][0]
+                answer = model.fake_B.to('cpu').detach().numpy().copy()[0][0]
                 result_crop.append(answer)
-                prob_crop.append(prob_c)
             result.append(result_crop)
-            prob.append(prob_crop)
     result = np.array(result)
     prob = np.array(prob)
     # print(result.shape)
@@ -144,10 +139,16 @@ def test(model, data):
 
     score = MAE
     
+    answer = model.fake_B.to('cpu').detach().numpy().copy()
+    data_A = data['A'].numpy()[0][0]
+    data_A = (data_A + 1)*my_util.distance[-1]
     data_B = data['B'].numpy()[0][0]
-    data_B = data_B/(np.max(data_B)/2) - 1
-    org = score(data['A'].numpy()[0][0], data_B)
-    last = score(data['A'].numpy()[0][0], img)
+    m_max = my_util.distance[-1]
+    m_min = 0
+    data_A = np.where(data_A > m_max, m_max, data_A)
+    data_A = (data_A - m_min)/(m_max - m_min)*2 - 1
+    org = score(data_A, data_B)
+    last = score(data_A, img)
     first = score(img, data_B)
 
     return np.array([org, last, first])
@@ -172,3 +173,47 @@ class CustomCELoss(_WeightedLoss):
         error += 0.1*F.cross_entropy(input, target_p1, weight=self.weight,
                                ignore_index=self.ignore_index, reduction=self.reduction)
         return error
+
+
+class ImagePool():
+    """This class implements an image buffer that stores previously generated images.
+    This buffer enables us to update discriminators using a history of generated images
+    rather than the ones produced by the latest generators.
+    """
+
+    def __init__(self, pool_size):
+        """Initialize the ImagePool class
+        Parameters:
+            pool_size (int) -- the size of image buffer, if pool_size=0, no buffer will be created
+        """
+        self.pool_size = pool_size
+        if self.pool_size > 0:  # create an empty pool
+            self.num_imgs = 0
+            self.images = []
+
+    def query(self, image):
+        """Return an image from the pool.
+        Parameters:
+            images: the latest generated images from the generator
+        Returns images from the buffer.
+        By 50/100, the buffer will return input images.
+        By 50/100, the buffer will return images previously stored in the buffer,
+        and insert the current images to the buffer.
+        """
+        if self.pool_size == 0:  # if the buffer size is 0, do nothing
+            return image
+
+        image = torch.tensor(image, device=image.device)
+
+        if self.num_imgs < self.pool_size:   # if the buffer is not full; keep inserting current images to the buffer
+            self.num_imgs = self.num_imgs + 1
+            self.images.append(image)
+        else:
+            self.images.pop(0)
+            self.images.append(image)
+
+        # for i in self.images:
+        #     print(i.shape)
+        return_images = torch.cat(self.images, 0) 
+
+        return return_images
