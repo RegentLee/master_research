@@ -117,3 +117,14 @@ class choose:
             B = torch.cat([B[:, :, :c], B[:, :, c + 1:]], dim=2)
 
         return A, B
+
+
+def crop_244(x, y, imgA, imgB):
+    assert(len(imgA[0]) == len(imgB[0]))
+    x = x % (len(imgA[0])%244)
+    y = y % (len(imgA[0])%244)
+    # print(x, y)
+    A = imgA[:, x:x + 244, y:y + 244]
+    B = imgB[:, x:x + 244, y:y + 244]
+    return A, B
+        

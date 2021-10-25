@@ -41,7 +41,7 @@ class MasterPix2PixDataset(BaseDataset):
         parser.add_argument('--LOOid', type=int, default=-1, help='Leave-one-out cross-validation id')
         parser.add_argument('--diff', type=bool, default=False)
 
-        parser.set_defaults(input_nc=1, output_nc=1)  # specify dataset-specific default values
+        parser.set_defaults(input_nc=16, output_nc=16)  # specify dataset-specific default values
         
         return parser
 
@@ -112,19 +112,7 @@ class MasterPix2PixDataset(BaseDataset):
         else:
             self.data_A = [transform_A(i) for i in val_A]
             self.data_B = [transform_B(i) for i in val_B]
-
-        # self.choose = my_transforms.choose()
-
-        self.x = my_util.x
-        self.y = my_util.y
-        self.A = []
-        self.B = []
-
-        for i in range(len(self.data_A)):
-            temp = my_transforms.crop(self.x, self.y, self.data_A[i], self.data_B[i])
-            self.A += temp[0]
-            self.B += temp[1]
-
+            
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -143,28 +131,16 @@ class MasterPix2PixDataset(BaseDataset):
         path = 'temp'    # needs to be a string
         # data_A = torch.Tensor(self.data.data_A)    # needs to be a tensor
         # data_B = torch.Tensor(self.data.data_B)    # needs to be a tensor
-        if my_util.x != self.x or my_util.y != self.y:
-            self.x = my_util.x
-            self.y = my_util.y
-            self.A = []
-            self.B = []
 
-            for i in range(len(self.data_A)):
-                temp = my_transforms.crop(self.x, self.y, self.data_A[i], self.data_B[i])
-                self.A += temp[0]
-                self.B += temp[1]
-                # print(len(self.data_B), len(self.B))
+        A = self.data_A[index]
 
-        A = self.A[index]
+        B = self.data_B[index]
 
-        B = self.B[index]
-
-        # if not my_util.val:
-        #     A, B = self.choose(A, B)
+        A, B = my_transforms.crop_244(my_util.x, my_util.y, A, B)
         
         return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 
     def __len__(self):
         """Return the total number of images."""
-        return max(len(self.A), len(self.B))
+        return max(len(self.data_A), len(self.data_B))
 

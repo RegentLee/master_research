@@ -125,7 +125,7 @@ class UNet(nn.Module):
         # logits_t = logits.transpose(2, 3)
         # logits = (logits + logits_t)/2
         # logits = self.attn(x0, logits)
-        # output = logits + x0
+        output = logits + x0
         return logits
 
     def _shortcut(self, x):

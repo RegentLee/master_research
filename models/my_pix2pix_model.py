@@ -90,7 +90,7 @@ class MyPix2PixModel(BaseModel):
                                 norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
                                 use_dropout=(not opt.no_dropout))
         self.netG = networks.init_net(self.net, opt.init_type, opt.init_gain, self.gpu_ids)
-        summary(self.net, input_size=(1, 1, 64, 64), depth=10)
+        summary(self.net, input_size=(1, 1, 244, 244), depth=10)
 
         if self.isTrain:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
             # self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
@@ -100,8 +100,8 @@ class MyPix2PixModel(BaseModel):
             self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
             netPixel = MyPixelDiscriminator(opt.output_nc)
             self.netPixel = networks.init_net(netPixel, opt.init_type, opt.init_gain, self.gpu_ids)
-            summary(self.netD, input_size=(1, 2, 64, 64), depth=10)
-            summary(self.netPixel, input_size=(1, 1, 64, 64), depth=10)
+            summary(self.netD, input_size=(1, 2, 244, 244), depth=10)
+            summary(self.netPixel, input_size=(1, 1, 244, 244), depth=10)
 
         if self.isTrain:
             # define loss functions
@@ -417,7 +417,112 @@ class MyPix2PixModel(BaseModel):
         # print(self.net.state_dict()["linear.weight"])
         # print(self.net.state_dict()["linear.bias"])
 
-class MyUNetGenerator(nn.Module):
+class Synchro(nn.Module):
+    def __init__(self):
+        super(Synchro, self).__init__()
+
+    def make_input(self, input):
+        ip0 = input[:, :, 0:64, 0:64]
+        ip1 = input[:, :, 0:64, 60:124]
+        ip2 = input[:, :, 0:64, 120:184]
+        ip3 = input[:, :, 0:64, 180:244]
+
+        ip4 = input[:, :, 60:124, 0:64]
+        ip5 = input[:, :, 60:124, 60:124]
+        ip6 = input[:, :, 60:124, 120:184]
+        ip7 = input[:, :, 60:124, 180:244]
+
+        ip8 = input[:, :, 120:184, 0:64]
+        ip9 = input[:, :, 120:184, 60:124]
+        ip10 = input[:, :, 120:184, 120:184]
+        ip11 = input[:, :, 120:184, 180:244]
+
+        ip12 = input[:, :, 180:244, 0:64]
+        ip13 = input[:, :, 180:244, 60:124]
+        ip14 = input[:, :, 180:244, 120:184]
+        ip15 = input[:, :, 180:244, 180:244]
+
+        ip = [
+            ip0, ip1, ip2, ip3,
+            ip4, ip5, ip6, ip7,
+            ip8, ip9, ip10, ip11,
+            ip12, ip13, ip14, ip15
+        ]
+
+        ip = torch.cat(ip, dim=1)
+
+        return ip
+
+    def make_output(self, input):
+        output = torch.empty((input.shape[0], 1, 244, 244), device=input.device)
+
+        output[:, :, 0:60, 0:60] = input[:, 0, 0:60, 0:60]
+        output[:, :, 0:60, 64:120] = input[:, 1, 0:60, 4:60]
+        output[:, :, 0:60, 124:180] = input[:, 2, 0:60, 4:60]
+        output[:, :, 0:60, 184:244] = input[:, 3, 0:60, 4:64]
+
+        output[:, :, 64:120, 0:60] = input[:, 4, 4:60, 0:60]
+        output[:, :, 64:120, 64:120] = input[:, 5, 4:60, 4:60]
+        output[:, :, 64:120, 124:180] = input[:, 6, 4:60, 4:60]
+        output[:, :, 64:120, 184:244] = input[:, 7, 4:60, 4:64]
+
+        output[:, :, 124:180, 0:60] = input[:, 8, 4:60, 0:60]
+        output[:, :, 124:180, 64:120] = input[:, 9, 4:60, 4:60]
+        output[:, :, 124:180, 124:180] = input[:, 10, 4:60, 4:60]
+        output[:, :, 124:180, 184:244] = input[:, 11, 4:60, 4:64]
+
+        output[:, :, 184:244, 0:60] = input[:, 12, 4:64, 0:60]
+        output[:, :, 184:244, 64:120] = input[:, 13, 4:64, 4:60]
+        output[:, :, 184:244, 124:180] = input[:, 14, 4:64, 4:60]
+        output[:, :, 184:244, 184:244] = input[:, 15, 4:64, 4:64]
+
+        output[:, :, 0:60, 60:64] = (input[:, 0, 0:60, 60:64] + input[:, 1, 0:60, 0:4])/2
+        output[:, :, 0:60, 120:124] = (input[:, 1, 0:60, 60:64] + input[:, 2, 0:60, 0:4])/2
+        output[:, :, 0:60, 180:184] = (input[:, 2, 0:60, 60:64] + input[:, 3, 0:60, 0:4])/2
+
+        output[:, :, 64:120, 60:64] = (input[:, 4, 4:60, 60:64] + input[:, 5, 4:60, 0:4])/2
+        output[:, :, 64:120, 120:124] = (input[:, 5, 4:60, 60:64] + input[:, 6, 4:60, 0:4])/2
+        output[:, :, 64:120, 180:184] = (input[:, 6, 4:60, 60:64] + input[:, 7, 4:60, 0:4])/2
+
+        output[:, :, 124:180, 60:64] = (input[:, 8, 4:60, 60:64] + input[:, 9, 4:60, 0:4])/2
+        output[:, :, 124:180, 120:124] = (input[:, 9, 4:60, 60:64] + input[:, 10, 4:60, 0:4])/2
+        output[:, :, 124:180, 180:184] = (input[:, 10, 4:60, 60:64] + input[:, 11, 4:60, 0:4])/2
+
+        output[:, :, 184:244, 60:64] = (input[:, 12, 4:64, 60:64] + input[:, 13, 4:64, 0:4])/2
+        output[:, :, 184:244, 120:124] = (input[:, 13, 4:64, 60:64] + input[:, 14, 4:64, 0:4])/2
+        output[:, :, 184:244, 180:184] = (input[:, 14, 4:64, 60:64] + input[:, 15, 4:64, 0:4])/2
+
+        output[:, :, 60:64, 0:60] = (input[:, 0, 60:64, 0:60] + input[:, 4, 0:4, 0:60])/2
+        output[:, :, 120:124, 0:60] = (input[:, 4, 60:64, 0:60] + input[:, 8, 0:4, 0:60])/2
+        output[:, :, 180:184, 0:60] = (input[:, 8, 60:64, 0:60] + input[:, 12, 0:4, 0:60])/2
+
+        output[:, :, 60:64, 64:120] = (input[:, 1, 60:64, 4:60] + input[:, 5, 0:4, 4:60])/2
+        output[:, :, 120:124, 64:120] = (input[:, 5, 60:64, 4:60] + input[:, 9, 0:4, 4:60])/2
+        output[:, :, 180:184, 64:120] = (input[:, 9, 60:64, 4:60] + input[:, 13, 0:4, 4:60])/2
+
+        output[:, :, 60:64, 124:180] = (input[:, 2, 60:64, 4:60] + input[:, 6, 0:4, 4:60])/2
+        output[:, :, 120:124, 124:180] = (input[:, 6, 60:64, 4:60] + input[:, 10, 0:4, 4:60])/2
+        output[:, :, 180:184, 124:180] = (input[:, 10, 60:64, 4:60] + input[:, 14, 0:4, 4:60])/2
+
+        output[:, :, 60:64, 184:244] = (input[:, 3, 60:64, 4:64] + input[:, 7, 0:4, 4:64])/2
+        output[:, :, 120:124, 184:244] = (input[:, 7, 60:64, 4:64] + input[:, 11, 0:4, 4:64])/2
+        output[:, :, 180:184, 184:244] = (input[:, 11, 60:64, 4:64] + input[:, 15, 0:4, 4:64])/2
+
+        output[:, :, 60:64, 60:64] = (input[:, 0, 60:64, 60:64] + input[:, 1, 60:64, 0:4] + input[:, 4, 0:4, 60:64] + input[:, 5, 0:4, 0:4])/4
+        output[:, :, 120:124, 60:64] = (input[:, 4, 60:64, 60:64] + input[:, 5, 60:64, 0:4] + input[:, 8, 0:4, 60:64] + input[:, 9, 0:4, 0:4])/4
+        output[:, :, 180:184, 60:64] = (input[:, 8, 60:64, 60:64] + input[:, 9, 60:64, 0:4] + input[:, 12, 0:4, 60:64] + input[:, 13, 0:4, 0:4])/4
+
+        output[:, :, 60:64, 120:124] = (input[:, 1, 60:64, 60:64] + input[:, 2, 60:64, 0:4] + input[:, 5, 0:4, 60:64] + input[:, 6, 0:4, 0:4])/4
+        output[:, :, 120:124, 120:124] = (input[:, 5, 60:64, 60:64] + input[:, 6, 60:64, 0:4] + input[:, 9, 0:4, 60:64] + input[:, 10, 0:4, 0:4])/4
+        output[:, :, 180:184, 120:124] = (input[:, 9, 60:64, 60:64] + input[:, 10, 60:64, 0:4] + input[:, 13, 0:4, 60:64] + input[:, 14, 0:4, 0:4])/4
+
+        output[:, :, 60:64, 180:184] = (input[:, 2, 60:64, 60:64] + input[:, 3, 60:64, 0:4] + input[:, 6, 0:4, 60:64] + input[:, 7, 0:4, 0:4])/4
+        output[:, :, 120:124, 180:184] = (input[:, 6, 60:64, 60:64] + input[:, 7, 60:64, 0:4] + input[:, 10, 0:4, 60:64] + input[:, 11, 0:4, 0:4])/4
+        output[:, :, 180:184, 180:184] = (input[:, 10, 60:64, 60:64] + input[:, 11, 60:64, 0:4] + input[:, 14, 0:4, 60:64] + input[:, 15, 0:4, 0:4])/4
+
+        return output
+
+class MyUNetGenerator(Synchro):
     """Create a Unet-based generator"""
 
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
@@ -432,7 +537,7 @@ class MyUNetGenerator(nn.Module):
         """
         super(MyUNetGenerator, self).__init__()
 
-        model = [UNet(input_nc, 1, True)]
+        model = [UNet(input_nc, output_nc, True)]
 
         model += [nn.Tanh()]
         # model += [nn.Hardtanh()]
@@ -441,12 +546,14 @@ class MyUNetGenerator(nn.Module):
 
     def forward(self, input):
         """Standard forward"""
+        input = self.make_input(input)
         x = self.model(input)
+        x = self.make_output(x)
 
         # x_t = x.transpose(2, 3)
         # x = (x + x_t)/2
 
-        return x
+        return x       
 
 class MyUNetD(nn.Module):
     """Create a Unet-based generator"""
@@ -1021,7 +1128,7 @@ class PAN(nn.Module):
         return output1, output2, output3, output4, output
 
 
-class MyPixelDiscriminator(nn.Module):
+class MyPixelDiscriminator(Synchro):
     def __init__(self, input_nc):
         super(MyPixelDiscriminator, self).__init__()
 
@@ -1053,6 +1160,7 @@ class MyPixelDiscriminator(nn.Module):
         )'''
 
     def forward(self, x):
+        x = self.make_input(x)
         return self.model(x).view(-1, 1)
 
 class NoNorm(nn.Module):
