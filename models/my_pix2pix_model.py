@@ -26,7 +26,7 @@ import torchvision.transforms as transforms
 from torchvision.models.resnet import BasicBlock
 
 from util import my_util
-from .unet import UNet
+from .unet import UNet, IResNet
 
 from torchinfo import summary
 
@@ -86,19 +86,21 @@ class MyPix2PixModel(BaseModel):
         # self.net = MyResNet50Generator(opt.input_nc, opt.output_nc, opt.ngf, 
         #                         norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
         #                         use_dropout=(not opt.no_dropout), n_blocks=50)
-        self.net = MyUNetGenerator(opt.input_nc, opt.output_nc, opt.ngf, 
-                                norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
-                                use_dropout=(not opt.no_dropout))
+        # self.net = MyUNetGenerator(opt.input_nc, opt.output_nc, opt.ngf, 
+        #                         norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
+        #                         use_dropout=(not opt.no_dropout))
+        self.net = Generator(opt.input_nc, opt.output_nc)
+        # self.net = networks.UnetGenerator(opt.input_nc, opt.output_nc, 6, opt.ngf, norm_layer=networks.get_norm_layer(norm_type=opt.norm), use_dropout=(not opt.no_dropout))
         self.netG = networks.init_net(self.net, opt.init_type, opt.init_gain, self.gpu_ids)
-        summary(self.net, input_size=(1, 1, 64, 64), depth=10)
+        summary(self.net, input_data=[torch.zeros([1, 1, 64, 64])], depth=15) #, torch.zeros(1, dtype=torch.long)
 
         if self.isTrain:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
             # self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
             #                               opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
             # netD = networks.PixelDiscriminator(opt.output_nc, opt.ndf, norm_layer=networks.get_norm_layer(norm_type=opt.norm))
-            netD = MyPixelDiscriminator(opt.input_nc + opt.output_nc)
+            netD = MyPixelDiscriminator(opt.input_nc + opt.output_nc, nn.Identity)
             self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
-            netPixel = MyPixelDiscriminator(opt.output_nc)
+            netPixel = MyPixelDiscriminator(opt.output_nc, nn.Identity)
             self.netPixel = networks.init_net(netPixel, opt.init_type, opt.init_gain, self.gpu_ids)
             summary(self.netD, input_size=(1, 2, 64, 64), depth=10)
             summary(self.netPixel, input_size=(1, 1, 64, 64), depth=10)
@@ -106,9 +108,10 @@ class MyPix2PixModel(BaseModel):
         if self.isTrain:
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
-            self.criterionCE = my_util.CustomCELoss() # torch.nn.CrossEntropyLoss()
+            self.criterionCE = torch.nn.CrossEntropyLoss()
             self.criterionL2 = torch.nn.L1Loss()
-            self.criterionTri = nn.TripletMarginLoss(margin=50, p=1.0) # torch.nn.MSELoss()# torch.nn.L1Loss()
+            self.criterionAB = torch.nn.BCEWithLogitsLoss()
+            # self.criterionTri = nn.TripletMarginLoss(margin=50, p=1.0) # torch.nn.MSELoss()# torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -138,8 +141,19 @@ class MyPix2PixModel(BaseModel):
         """
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
-        self.real_B = input['B' if AtoB else 'A'].to(self.device)
+        self.idt_B = input['B' if AtoB else 'A'].to(self.device)
+        self.real_B = self._shortcut(self.idt_B)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
+        self.idx = input['idx'].to(self.device)
+        self.a = self._shortcut(self.real_A)
+
+    def _shortcut(self, x):
+        x = (x + 1)*my_util.distance[-1]
+        m_max = torch.tensor(my_util.distance[-1], dtype=torch.float, device=x.device)
+        m_min = torch.tensor(0, dtype=torch.float, device=x.device)
+        x = torch.where(x > m_max, m_max, x)
+        x = (x - m_min)/(m_max - m_min)*2 - 1
+        return x
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
@@ -194,6 +208,8 @@ class MyPix2PixModel(BaseModel):
         # print(torch.max(m - pan_loss, torch.tensor([0.]).cuda()))
         # self.loss_D += torch.max(m - pan_loss, torch.tensor([0.]).cuda())[0]
 
+        # self.loss_D += (self.criterionCE(ce_fake, self.idx) + self.criterionCE(ce_real, self.idx)) * 0.5
+
         self.loss_DP = self.loss_D
         self.loss_D.backward()
         '''
@@ -246,6 +262,11 @@ class MyPix2PixModel(BaseModel):
         # elf.loss_pixel_real = self.criterionGAN(pred_real - pred_fake, True)
         self.loss_pixel = (self.loss_pixel_fake + self.loss_pixel_real) * 0.5
 
+        # self.loss_pixel += (self.criterionCE(ce_fake, self.idx) + self.criterionCE(ce_real, self.idx)) * 0.5
+
+        # _, _, r_a = self.netPixel(self.a)
+        # self.loss_pixel += (self.criterionAB(f_b, torch.ones_like(f_b)) + self.criterionAB(r_b, torch.ones_like(r_b)) + self.criterionAB(r_a, torch.zeros_like(r_a))) * 0.33
+
         self.loss_DP += self.loss_pixel
         self.loss_pixel.backward()
         '''
@@ -291,8 +312,8 @@ class MyPix2PixModel(BaseModel):
         pred_real = self.netD(real_AB)
         ## self.loss_G_GAN = self.criterionGAN(pred_fake, True)
         # self.loss_G_GAN = self.criterionGAN(pred_fake, True) + self.criterionGAN(fake_all, True)
-        self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True)
-        self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False)
+        self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True, True)
+        self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False, True)
         # self.loss_G_fake = self.criterionGAN(fake - real, True)
         # self.loss_G_real = self.criterionGAN(real - fake, False)
         self.loss_G_GAN = (self.loss_G_fake + self.loss_G_real) * 0.5
@@ -305,9 +326,12 @@ class MyPix2PixModel(BaseModel):
         real_B = self.real_B
         pred_real = self.netPixel(real_B)
         # self.loss_G_GAN += self.criterionGAN(pred_fake, True)
-        self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True)
-        self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False)
+        self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True, True)
+        self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False, True)
         self.loss_G_GAN += (self.loss_G_fake + self.loss_G_real) * 0.5
+
+        # _, _, r_a = self.netPixel(self.a)
+        # self.loss_G_GAN += (self.criterionAB(f_b, torch.ones_like(f_b)) + self.criterionAB(r_b, torch.ones_like(r_b)) + self.criterionAB(r_a, torch.zeros_like(r_a))) * 0.33
         
 
         # pan_loss = 5*self.criterionL2(real1, fake1)
@@ -334,6 +358,11 @@ class MyPix2PixModel(BaseModel):
         # self.loss_G_L1 += self.criterionTri(self.fake_B, self.real_B)
         # combine loss and calculate gradients
         self.loss_G = self.loss_G_GAN + self.loss_G_L1
+
+        # self.loss_G += (self.criterionCE(ce_fake, self.idx) + self.criterionCE(ce_real, self.idx)) * 0.5
+
+        # idt4B = self.netG(self.idt_B)
+        # self.loss_G += self.criterionL2(idt4B, self.real_B) * 0.33
 
         # self.loss_G = pan_loss + self.loss_G_GAN
         self.loss_G.backward()
@@ -432,6 +461,8 @@ class MyUNetGenerator(nn.Module):
         """
         super(MyUNetGenerator, self).__init__()
 
+        # self.PE = PositionEmbedding()
+
         model = [UNet(input_nc, 1, True)]
 
         model += [nn.Tanh()]
@@ -441,12 +472,72 @@ class MyUNetGenerator(nn.Module):
 
     def forward(self, input):
         """Standard forward"""
+        # idx = self.PE(idx)
+
+        # input = torch.cat([input, idx], dim=1)
+
         x = self.model(input)
 
         # x_t = x.transpose(2, 3)
         # x = (x + x_t)/2
 
         return x
+
+class PositionEmbedding(nn.Module):
+    def __init__(self):
+        super(PositionEmbedding, self).__init__()
+        self.embedding = nn.Embedding(16, 256)
+        self.linear = nn.Sequential(
+            nn.Linear(256, 1024),
+            nn.LeakyReLU(0.2, True),
+            nn.LayerNorm(1024),
+            nn.Linear(1024, 4096),
+            nn.LayerNorm(4096)
+        )
+
+    def forward(self, input):
+        input_e = self.embedding(input)
+        # if my_util.val and (input == 0 or input == 8):
+        #     print(input, input_e)
+        input = self.linear(input_e)
+        return input.view(-1, 1, 64, 64)
+
+class MyIResNetGenerator(nn.Module):
+    """Create a Unet-based generator"""
+
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
+        """Construct a Unet-based generator
+
+        Parameters:
+            input_nc (int)      -- the number of channels in input images
+            output_nc (int)     -- the number of channels in output images
+            ngf (int)           -- the number of filters in the last conv layer
+            norm_layer          -- normalization layer
+            use_dropout (bool)  -- if use dropout layers
+        """
+        super(MyIResNetGenerator, self).__init__()
+
+        self.PE = PositionEmbedding()
+
+        model = [IResNet(input_nc + 1, output_nc)]
+
+        model += [nn.Tanh()]
+        # model += [nn.Hardtanh()]
+        
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input, idx):
+        """Standard forward"""
+        idx = self.PE(idx)
+
+        input = torch.cat([input, idx], dim=1)
+
+        x = self.model(input)
+        # x_t = x.transpose(2, 3)
+        # x = (x + x_t)/2
+
+        return x
+
 
 class MyUNetD(nn.Module):
     """Create a Unet-based generator"""
@@ -1022,26 +1113,32 @@ class PAN(nn.Module):
 
 
 class MyPixelDiscriminator(nn.Module):
-    def __init__(self, input_nc):
+    def __init__(self, input_nc, norm_layer=nn.BatchNorm2d):
         super(MyPixelDiscriminator, self).__init__()
 
-        norm_layer = nn.BatchNorm2d
         ndf = 64
         
         self.model = nn.Sequential(
             nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=1), #(1, 256, 256) -> (64, 128, 128) # (1, 64, 64) -> (64, 32, 32)
             nn.LeakyReLU(0.2, True),
             nn.Conv2d(ndf, ndf*2, kernel_size=4, stride=2, padding=1), #(64, 128, 128) -> (128, 64, 64) # (64, 32, 32) -> (128, 16, 16)
-            norm_layer(ndf*2),
+            norm_layer(ndf*2, affine=True),
             nn.LeakyReLU(0.2, True),
             nn.Conv2d(ndf*2, ndf*4, kernel_size=4, stride=2, padding=1), #(128, 64, 64) -> (256, 32, 32) # (128, 16, 16) -> (256, 8, 8)
-            norm_layer(ndf*4),
+            norm_layer(ndf*4, affine=True),
             nn.LeakyReLU(0.2, True),
             nn.Conv2d(ndf*4, ndf*8, kernel_size=4, stride=2, padding=1), #(256, 32, 32) -> (512, 16, 16) # (256, 8, 8) -> (512, 4, 4)
-            norm_layer(ndf*8),
+            norm_layer(ndf*8, affine=True),
             nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (1, 1, 1)
+            # nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (1, 1, 1)
+            nn.Conv2d(ndf*8, ndf*8, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (512, 1, 1)
+            nn.Flatten(),
+            # nn.LayerNorm(ndf*8),
+            nn.LeakyReLU(0.2, True),
         )
+
+        self.tf = nn.Linear(512, 1)
+        self.ab = nn.Linear(512, 1)
         '''
             nn.Conv2d(ndf*8, ndf*16, kernel_size=4, stride=2, padding=1), #(512, 16, 16) -> (1024, 8, 8) # (512, 4, 4) -> (1, 1, 1)
             norm_layer(ndf*16),
@@ -1053,14 +1150,12 @@ class MyPixelDiscriminator(nn.Module):
         )'''
 
     def forward(self, x):
-        return self.model(x).view(-1, 1)
+        # return self.model(x).view(-1, 1)
+        x = self.model(x)
+        tf = self.tf(x)
+        ab = self.ab(x)
 
-class NoNorm(nn.Module):
-    def __init__(self, dim):
-        super(NoNorm, self).__init__()
-
-    def forward(self, x):
-        return x
+        return tf
 
 class LNorm(nn.Module):
     def __init__(self, dim):
@@ -1069,3 +1164,61 @@ class LNorm(nn.Module):
     def forward(self, x):
         x = nn.functional.layer_norm(x, x.size()[1:])
         return x
+
+
+class ResidualBlock(nn.Module):
+    """Residual Block with instance normalization."""
+    def __init__(self, dim_in, dim_out):
+        super(ResidualBlock, self).__init__()
+        self.main = nn.Sequential(
+            nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.InstanceNorm2d(dim_out, affine=True, track_running_stats=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.InstanceNorm2d(dim_out, affine=True, track_running_stats=True))
+
+    def forward(self, x):
+        return x + self.main(x)
+
+
+class Generator(nn.Module):
+    """Generator network."""
+    def __init__(self, input_nc, output_nc, conv_dim=64, repeat_num=6):
+        super(Generator, self).__init__()
+
+        layers = []
+        layers.append(nn.Conv2d(input_nc + 1, conv_dim, kernel_size=7, stride=1, padding=3, bias=False))
+        layers.append(nn.InstanceNorm2d(conv_dim, affine=True, track_running_stats=True))
+        layers.append(nn.ReLU(inplace=True))
+
+        # Down-sampling layers.
+        curr_dim = conv_dim
+        for i in range(2):
+            layers.append(nn.Conv2d(curr_dim, curr_dim*2, kernel_size=4, stride=2, padding=1, bias=False))
+            layers.append(nn.InstanceNorm2d(curr_dim*2, affine=True, track_running_stats=True))
+            layers.append(nn.ReLU(inplace=True))
+            curr_dim = curr_dim * 2
+
+        # Bottleneck layers.
+        for i in range(repeat_num):
+            layers.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
+
+        # Up-sampling layers.
+        for i in range(2):
+            layers.append(nn.ConvTranspose2d(curr_dim, curr_dim//2, kernel_size=4, stride=2, padding=1, bias=False))
+            layers.append(nn.InstanceNorm2d(curr_dim//2, affine=True, track_running_stats=True))
+            layers.append(nn.ReLU(inplace=True))
+            curr_dim = curr_dim // 2
+
+        layers.append(nn.Conv2d(curr_dim, output_nc, kernel_size=7, stride=1, padding=3, bias=False))
+        layers.append(nn.Tanh())
+        self.main = nn.Sequential(*layers)
+
+    def forward(self, x, c):
+        # Replicate spatially and concatenate domain information.
+        # Note that this type of label conditioning does not work at all if we use reflection padding in Conv2d.
+        # This is because instance normalization ignores the shifting (or bias) effect.
+        c = c.view(c.size(0), c.size(1), 1, 1)
+        c = c.repeat(1, 1, x.size(2), x.size(3))
+        x = torch.cat([x, c], dim=1)
+        return self.main(x)

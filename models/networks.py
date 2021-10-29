@@ -257,7 +257,24 @@ class GANLoss(nn.Module):
             target_tensor = self.fake_label
         return target_tensor.expand_as(prediction)
 
-    def __call__(self, prediction, target_is_real):
+    def get_target_tensor_D(self, prediction, target_is_real):
+        """Create label tensors with the same size as the input.
+
+        Parameters:
+            prediction (tensor) - - tpyically the prediction from a discriminator
+            target_is_real (bool) - - if the ground truth label is for real images or fake images
+
+        Returns:
+            A label tensor filled with ground truth label, and with the size of the input
+        """
+
+        if target_is_real:
+            return 1 - 0.1*torch.rand_like(prediction)
+        else:
+            return 0.1*torch.rand_like(prediction)
+        return target_tensor.expand_as(prediction)
+
+    def __call__(self, prediction, target_is_real, isG=False):
         """Calculate loss given Discriminator's output and grount truth labels.
 
         Parameters:
@@ -268,6 +285,10 @@ class GANLoss(nn.Module):
             the calculated loss.
         """
         if self.gan_mode in ['lsgan', 'vanilla']:
+            # if isG:
+            #     target_tensor = self.get_target_tensor(prediction, target_is_real)
+            # else:
+            #     target_tensor = self.get_target_tensor_D(prediction, target_is_real)
             target_tensor = self.get_target_tensor(prediction, target_is_real)
             loss = self.loss(prediction, target_tensor)
         elif self.gan_mode == 'wgangp':

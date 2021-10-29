@@ -8,20 +8,6 @@ class UNet(nn.Module):
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
-
-        """self.inc = nn.Sequential(
-            DownBlock(n_channels, 64, ConvBlock, 1),
-            DownBlock(64, 128, ConvBlock, 1)
-        )
-        self.down1 = Down(128, 256, Encoder, 1)
-        self.down2 = Down(256, 512, Encoder, 1)
-        factor = 2 if bilinear else 1
-        self.down3 = Down(512, 1024 // factor, Encoder, 1)
-        self.up1 = Decoder(1024, 512)
-        self.up2 = Decoder(512, 256)
-        self.up3 = Decoder(256, 128)
-
-        self.outc = OutConv(128, n_classes)"""
         
         # self.inc = DoubleConv(n_channels, 64)
         Block = BasicBlock
@@ -30,14 +16,21 @@ class UNet(nn.Module):
         self.inc = nn.Sequential(
             nn.Conv2d(n_channels, 64, kernel_size=3, padding=1),
             # nn.LeakyReLU(0.2, True),
+            # nn.ReflectionPad2d(3),
+            # nn.Conv2d(n_channels, 64, kernel_size=7, padding=0),
+            # nn.InstanceNorm2d(64),
+            # nn.LeakyReLU(0.2, True),
             DownBlock(64, 64, Block, n),
         )
         self.down1 = Down(64, 128, Block, n)
         self.down2 = Down(128, 256, Block, n)
         self.down3 = Down(256, 512, Block, n)
         self.down4 = Down(512, 1024, Block, n)
+        """self.down1 = HaloDown(64, 128)
+        self.down2 = HaloDown(128, 256)
+        self.down3 = HaloDown(256, 512)
+        # self.down4 = HaloDown(512, 1024)"""
         factor = 1# 2 if bilinear else 1
-        self.down4 = Down(512, 1024, Block, n)
         self.down5 = Down(1024, 2048, Block, n)
         # self.down6 = Down(2048, 4096, Block, n)
         self.down6 = Inmost(2048, 4096, Block, n)
@@ -59,73 +52,23 @@ class UNet(nn.Module):
 
         self.attn = Attention(1)
 
-        """self.inc = nn.Sequential(
-            DownBlock(n_channels, 64, ResNeXt, 1),
-            DownBlock(64, 128, ResNeXt, 1),
-            DownBlock(128, 256, ResNeXt, 2),
-        )
-        self.down1 = Down(256, 512, ResNeXt, 4)
-        self.down2 = Down(512, 1024, ResNeXt, 6)
-        factor = 2 if bilinear else 1
-        self.down3 = Down(1024, 2048 // factor, ResNeXt, 6)
-        self.attn1 = Attention(1024)
-        # self.up1 = Up(512, 256 // factor, ConvBlock, 2, bilinear=bilinear)
-        self.up1_1 = nn.ConvTranspose2d(2048, 1024, kernel_size=2, stride=2)
-        self.up1_2 = DownBlock(2048, 1024, ResNeXt, 6)
-
-        self.attn2 = Attention(512)
-        # self.up2 = Up(256, 128 // factor, ConvBlock, 2, bilinear=bilinear)
-        self.up2_1 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
-        self.up2_2 = DownBlock(1024, 512, ResNeXt, 4)
-
-        self.attn3 = Attention(256)
-        # self.up3 = Up(128, 64, ConvBlock, 2, bilinear=bilinear)
-        self.up3_1 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
-        self.up3_2 = DownBlock(512, 256, ResNeXt, 3)
-
-        self.outc = OutConv(256, n_classes)"""
-
     def forward(self, x):
-        x0 = self._shortcut(x)
+        x0 = self._shortcut(x[:, 0])
         x1 = self.inc(x) # (1, 64, 64) -> (64, 64, 64)
         x2 = self.down1(x1) # (64, 64, 64) -> (128, 32, 32)
         x3 = self.down2(x2) # (128, 32, 32) -> (256, 16, 16)
         x4 = self.down3(x3) # (256, 16, 16) -> (512, 8, 8)
-        x5 = self.down4(x4) # (512, 8, 8) -> (1024, 4, 4)
-        # x6 = self.vae(x5)
+        # x5 = self.down4(x4) # (512, 8, 8) -> (1024, 4, 4)
         # x6 = self.down5(x5) # (1024, 4, 4) -> (2048, 2, 2)
         # x6 = self.down6(x6) # (2048, 2, 2) -> (4096, 1, 1) -> (2048, 2, 2)
-        # x8 = self.vae(x7)
-        # x7 = self.down6(x6)
-        # x8 = self.down7(x7)
-        # x9 = self.down8(x8)
-        # x6 = self.dropout1(x6)
-        # x = self.u(x9, x8)
-        # x = self.p(x8, x7)
-        # x = self.dropout2(x)
         # x = self.up(x, x6)
         # x = self.up0(x6, x5)
-        x = self.up1(x5, x4)
-        x = self.up2(x, x3)
+        # x = self.up1(x5, x4)
+        x = self.up2(x4, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
-        '''x = self.up1_1(x4)
-        # x3 = self.attn1(x, x3)
-        x = torch.cat([x3, x], dim=1)
-        x = self.up1_2(x)
-        x = self.up2_1(x)
-        # x2 = self.attn2(x, x2)
-        x = torch.cat([x2, x], dim=1)
-        x = self.up2_2(x)
-        x = self.up3_1(x)
-        x1 = self.attn3(x, x1)
-        x = torch.cat([x1, x], dim=1)
-        x = self.up3_2(x)'''
         logits = self.outc(x)
-        # logits_t = logits.transpose(2, 3)
-        # logits = (logits + logits_t)/2
-        # logits = self.attn(x0, logits)
-        # output = logits + x0
+        # logits = logits + x0
         return logits
 
     def _shortcut(self, x):
@@ -135,6 +78,132 @@ class UNet(nn.Module):
         x = torch.where(x > m_max, m_max, x)
         x = (x - m_min)/(m_max - m_min)*2 - 1
         return x
+'''
+class UNet(nn.Module):
+    def __init__(self, n_channels, n_classes, bilinear=True):
+        super(UNet, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+
+        self.encoder = Encoder(n_channels)
+        self.decoder = Decoder(n_classes)
+        
+
+    def forward(self, x):
+        logits = self.decoder(self.encoder(x))
+        return logits
+
+    def _shortcut(self, x):
+        x = (x + 1)*my_util.distance[-1]
+        m_max = torch.tensor(my_util.distance[-1], dtype=torch.float, device=x.device)
+        m_min = torch.tensor(0, dtype=torch.float, device=x.device)
+        x = torch.where(x > m_max, m_max, x)
+        x = (x - m_min)/(m_max - m_min)*2 - 1
+        return x
+'''
+class Encoder(nn.Module):
+    def __init__(self, n_channels):
+        super(Encoder, self).__init__()
+        
+        ngf = 64
+        self.inc = nn.Sequential(
+            nn.Conv2d(n_channels, ngf, kernel_size=1, bias=False), # (1, 64, 64) -> (64, 64, 64)
+            # nn.InstanceNorm2d(ngf),
+            # nn.LeakyReLU(0.2, True),
+        )
+        self.down1 = nn.Sequential(
+            nn.Conv2d(ngf, ngf*2, kernel_size=4, stride=2, padding=1), # (64, 64, 64) -> (128, 32, 32)
+            nn.InstanceNorm2d(ngf*2),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down2 = nn.Sequential(
+            nn.Conv2d(ngf*2, ngf*4, kernel_size=4, stride=2, padding=1), # (128, 32, 32) -> (256, 16, 16)
+            nn.InstanceNorm2d(ngf*4),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down3 = nn.Sequential(
+            nn.Conv2d(ngf*4, ngf*8, kernel_size=4, stride=2, padding=1), # (256, 16, 16) -> (512, 8, 8)
+            nn.InstanceNorm2d(ngf*8),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down4 = nn.Sequential(
+            nn.Conv2d(ngf*8, ngf*16, kernel_size=4, stride=2, padding=1), # (512, 8, 8) -> (1024, 4, 4)
+            nn.InstanceNorm2d(ngf*16),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down5 = nn.Sequential(
+            nn.Conv2d(ngf*16, ngf*32, kernel_size=4, stride=2, padding=1), # (1024, 4, 4) -> (2048, 2, 2)
+            nn.InstanceNorm2d(ngf*32),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.down6 = nn.Sequential(
+            nn.Conv2d(ngf*32, ngf*64, kernel_size=4, stride=2, padding=1), # (2048, 2, 2) -> (4096, 1, 1)
+            nn.LeakyReLU(0.2, True),
+        )
+
+    def forward(self, x):
+        x0 = self.inc(x) # (1, 64, 64) -> (64, 64, 64)
+        x1 = self.down1(x0) # (64, 64, 64) -> (128, 32, 32)
+        x2 = self.down2(x1) # (128, 32, 32) -> (256, 16, 16)
+        x3 = self.down3(x2) # (256, 16, 16) -> (512, 8, 8)
+        x4 = self.down4(x3) # (512, 8, 8) -> (1024, 4, 4)
+        x5 = self.down5(x4) # (1024, 4, 4) -> (2048, 2, 2)
+        x6 = self.down6(x5) # (2048, 2, 2) -> (4096, 1, 1)
+        return x1, x2, x3, x4, x5, x6
+
+class Decoder(nn.Module):
+    def __init__(self, n_classes):
+        super(Decoder, self).__init__()
+        
+        ngf = 64
+        self.outc = nn.Sequential(
+            nn.Conv2d(ngf, n_classes, kernel_size=1, bias=False), # (1, 64, 64) <- (64, 64, 64)
+            # nn.InstanceNorm2d(ngf),
+            # nn.LeakyReLU(0.2, True),
+        )
+        self.up1 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*2*2, ngf, kernel_size=4, stride=2, padding=1), # (64, 64, 64) <- (128, 32, 32)
+            nn.InstanceNorm2d(ngf, affine=True),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up2 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*4*2, ngf*2, kernel_size=4, stride=2, padding=1), # (128, 32, 32) <- (256, 16, 16)
+            nn.InstanceNorm2d(ngf*2, affine=True),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up3 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*8*2, ngf*4, kernel_size=4, stride=2, padding=1), # (256, 16, 16) <- (512, 8, 8)
+            nn.InstanceNorm2d(ngf*4, affine=True),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up4 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*16*2, ngf*8, kernel_size=4, stride=2, padding=1), # (512, 8, 8) <- (1024, 4, 4)
+            nn.InstanceNorm2d(ngf*8, affine=True),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up5 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*32*2, ngf*16, kernel_size=4, stride=2, padding=1), # (1024, 4, 4) <- (2048, 2, 2)
+            nn.InstanceNorm2d(ngf*16, affine=True),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.up6 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*64, ngf*32, kernel_size=4, stride=2, padding=1), # (2048, 2, 2) <- (4096, 1, 1)
+            nn.InstanceNorm2d(ngf*32, affine=True),
+            nn.LeakyReLU(0.2, True),
+        )
+
+    def forward(self, code):
+        x1, x2, x3, x4, x5, x6 = code
+        x = self.up6(x6) # (2048, 2, 2) <- (4096, 1, 1)
+        x = self.up5(torch.cat([x5, x], dim=1)) # (1024, 4, 4) <- (2048, 2, 2)
+        x = self.up4(torch.cat([x4, x], dim=1)) # (512, 8, 8) <- (1024, 4, 4)
+        x = self.up3(torch.cat([x3, x], dim=1)) # (256, 16, 16) <- (512, 8, 8)
+        x = self.up2(torch.cat([x2, x], dim=1)) # (128, 32, 32) <- (256, 16, 16)
+        x = self.up1(torch.cat([x1, x], dim=1)) # (64, 64, 64) <- (128, 32, 32)
+        x = self.outc(x) # (1, 64, 64) <- (64, 64, 64)
+        return x
+
 
 class UNetD(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=True):
@@ -230,3 +299,56 @@ class UNet(nn.Module):
         logits = self.outc(x) + x0
         return logits
 '''
+
+
+class IResNet(nn.Module):
+    def __init__(self, n_channels, n_classes):
+        super(IResNet, self).__init__()
+
+        ngf = 64
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(n_channels, ngf, kernel_size=7, padding=0),
+                 nn.InstanceNorm2d(ngf),
+                 nn.LeakyReLU(0.2, True)]
+
+        model += [ResGroup(ngf, ngf), ResGroup(ngf, ngf), ResGroup(ngf, ngf)]
+        model += [ResGroupDown(ngf, ngf*2)]
+        model += [ResGroup(ngf*2, ngf*2), ResGroup(ngf*2, ngf*2), ResGroup(ngf*2, ngf*2)]
+        model += [ResGroupDown(ngf*2, ngf*4)]
+        model += [ResGroup(ngf*4, ngf*4), ResGroup(ngf*4, ngf*4), ResGroup(ngf*4, ngf*4)]
+
+        model += [
+            nn.Conv2d(ngf*4, ngf*8, kernel_size=3, padding=1),
+            nn.PixelShuffle(2),
+            nn.InstanceNorm2d(ngf*2),
+            nn.LeakyReLU(0.2, True)
+        ]
+
+        model += [
+            nn.Conv2d(ngf*2, ngf*4, kernel_size=3, padding=1),
+            nn.PixelShuffle(2),
+            nn.InstanceNorm2d(ngf),
+            nn.LeakyReLU(0.2, True)
+        ]
+
+        model += [ResGroup(ngf, ngf), ResGroup(ngf, ngf)]
+
+        model += [OutConv(ngf, n_classes)]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, x):
+        return self.model(x) + self._shortcut(x[:, 0])
+
+    def _shortcut(self, x):
+        x = (x + 1)*my_util.distance[-1]
+        m_max = torch.tensor(my_util.distance[-1], dtype=torch.float, device=x.device)
+        m_min = torch.tensor(0, dtype=torch.float, device=x.device)
+        x = torch.where(x > m_max, m_max, x)
+        x = (x - m_min)/(m_max - m_min)*2 - 1
+        return x
+
+
+
+
+        

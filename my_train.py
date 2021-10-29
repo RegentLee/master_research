@@ -94,16 +94,16 @@ if __name__ == '__main__':
                 if opt.display_id > 0:
                     visualizer.plot_current_losses(epoch, float(epoch_iter) / dataset_size, losses)
 
-            if total_iters % opt.save_latest_freq == 0:   # cache our latest model every <save_latest_freq> iterations
-                print('saving the latest model (epoch %d, total_iters %d)' % (epoch, total_iters))
-                save_suffix = 'iter_%d' % total_iters if opt.save_by_iter else 'latest'
-                model.save_networks(save_suffix)
+            # if total_iters % opt.save_latest_freq == 0:   # cache our latest model every <save_latest_freq> iterations
+            #     print('saving the latest model (epoch %d, total_iters %d)' % (epoch, total_iters))
+            #     save_suffix = 'iter_%d' % total_iters if opt.save_by_iter else 'latest'
+            #     model.save_networks(save_suffix)
 
             iter_data_time = time.time()
-        if epoch % opt.save_epoch_freq == 0:              # cache our model every <save_epoch_freq> epochs
-            print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
-            model.save_networks('latest')
-            model.save_networks(epoch)
+        # if epoch % opt.save_epoch_freq == 0:              # cache our model every <save_epoch_freq> epochs
+        #     print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+        #     model.save_networks('latest')
+        #     model.save_networks(epoch)
 
         print('End of epoch %d / %d \t Time Taken: %d sec' % (epoch, opt.n_epochs + opt.n_epochs_decay, time.time() - epoch_start_time))
 
@@ -128,7 +128,7 @@ if __name__ == '__main__':
                 answer = model.fake_B.to('cpu').detach().numpy().copy()
                 data_A = data['A'].numpy()[0][0]
                 data_A = (data_A + 1)*my_util.distance[-1]
-                data_B = data['B'].numpy()[0][0]
+                data_B = model.real_B.to('cpu').detach().numpy().copy()[0][0]
                 m_max = my_util.distance[-1]
                 m_min = 0
                 data_A = np.where(data_A > m_max, m_max, data_A)
@@ -154,7 +154,7 @@ if __name__ == '__main__':
                 answer = model.fake_B.to('cpu').detach().numpy().copy()
                 data_A = data['A'].numpy()[0][0]
                 data_A = (data_A + 1)*my_util.distance[-1]
-                data_B = data['B'].numpy()[0][0]
+                data_B = model.real_B.to('cpu').detach().numpy().copy()[0][0]
                 m_max = my_util.distance[-1]
                 m_min = 0
                 data_A = np.where(data_A > m_max, m_max, data_A)

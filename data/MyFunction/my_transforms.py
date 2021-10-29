@@ -66,17 +66,28 @@ class CE:
 
 def crop(x, y, imgA, imgB):
     assert(len(imgA[0]) == len(imgB[0]))
-    x = x % (len(imgA[0])%64)
-    y = y % (len(imgA[0])%64)
+    if len(imgA[0]) % 64 !=0:
+        x = x % (len(imgA[0])%64)
+        y = y % (len(imgA[0])%64)
+    else:
+        x = 0
+        y = 0
     # print(x, y)
     img_size = len(imgA[0])
     crop_imgA = []
     crop_imgB = []
+    idx = []
+    idx_i = 0
+    idx_j = 0
     for i in range(y, img_size - 64 + 1, 64):
         for j in range(x, img_size - 64 + 1, 64):
             crop_imgA.append(imgA[:, j:j + 64, i:i + 64])
             crop_imgB.append(imgB[:, j:j + 64, i:i + 64])
-    return crop_imgA, crop_imgB
+            idx.append(idx_i*4 + idx_j)
+            idx_j += 1
+        idx_i += 1
+        idx_j = 0
+    return crop_imgA, crop_imgB# , idx
 
 class clip:
     def __init__(self):
@@ -117,3 +128,13 @@ class choose:
             B = torch.cat([B[:, :, :c], B[:, :, c + 1:]], dim=2)
 
         return A, B
+
+
+class pad:
+    def __init__(self):
+        self.padding = transforms.Pad(5, padding_mode='reflect')
+
+    def __call__(self, img):
+        if len(img[0]) < 256:
+            img = self.padding(img)
+        return img

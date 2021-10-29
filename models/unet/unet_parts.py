@@ -64,14 +64,14 @@ class ConvDBlock(nn.Module):
 
 
 class DownBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, block, num=2, mid_channels=None):
+    def __init__(self, in_channels, out_channels, block, num=2, affine=False, mid_channels=None):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
             # print(in_channels, mid_channels)
-        model = [block(in_channels, mid_channels)]
+        model = [block(in_channels, mid_channels, affine)]
         for i in range(num - 1):
-            model += [block(mid_channels, out_channels)]
+            model += [block(mid_channels, out_channels, affine)]
         self.model = nn.Sequential(*model)
 
     def forward(self, x):
@@ -89,6 +89,7 @@ class Down(nn.Module):
             nn.InstanceNorm2d(out_channels),
             # LNorm(out_channels),
             nn.LeakyReLU(0.2, True),
+            # ResGroupDown(in_channels, out_channels),
             DownBlock(out_channels, out_channels, block, num)
             # nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=1),
             # nn.InstanceNorm2d(in_channels),
@@ -109,17 +110,19 @@ class Up(nn.Module):
         # self.a = nn.parameter.Parameter(torch.Tensor(0.5))
 
         # if bilinear, use the normal convolutions to reduce the number of channels
-        self.up = nn.Sequential(
+        self.up1 = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels*4, kernel_size=3, padding=1),
                 nn.PixelShuffle(2),
+                nn.InstanceNorm2d(out_channels, affine=True, track_running_stats=True)
             )
         if in_channels == out_channels:
             in_channels = in_channels*2
-        self.conv = nn.Sequential(
-            DownBlock(in_channels, out_channels, block, num)
+        self.conv1 = nn.Sequential(
+            DownBlock(in_channels, out_channels, block, num, affine=True)
         )
-        
-        self.attn = Attention(out_channels)
+        self.conv2 = nn.Sequential(
+            DownBlock(out_channels, out_channels, block, num, affine=True)
+        )
         '''if bilinear:
             self.up = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
@@ -137,20 +140,22 @@ class Up(nn.Module):
         self.conv = DownBlock(in_channels, out_channels, block, num)'''
 
 
-    def forward(self, x1, x2):
-        x1 = self.up(x1)
-        # x2 = self.attn(x1, x2)
-        # input is CHW
-        diffY = x2.size()[2] - x1.size()[2]
-        diffX = x2.size()[3] - x1.size()[3]
+    def forward(self, x1, x2=None):
+        x1 = self.up1(x1)
+        if torch.is_tensor(x2):
+            # input is CHW
+            diffY = x2.size()[2] - x1.size()[2]
+            diffX = x2.size()[3] - x1.size()[3]
 
-        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
+            x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
                         diffY // 2, diffY - diffY // 2])
-        # if you have padding issues, see
-        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
-        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
-        x = torch.cat([x2, x1], dim=1)
-        return self.conv(x)
+            # if you have padding issues, see
+            # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+            # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+            x = torch.cat([x2, x1], dim=1)
+            return self.conv1(x)
+        else:
+            return self.conv2(x1)
 
 
 class Inmost(nn.Module):
@@ -265,7 +270,11 @@ class ResNeXt(nn.Module):
         self.is_dim_changed = (indim != outdim)
         # projection shortcutを使う様にセット
         if self.is_dim_changed:
-            self.shortcut = nn.Conv2d(indim, outdim, 1)
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(indim, outdim, kernel_size=1),
+                nn.InstanceNorm2d(outdim)
+            )
+            
         
         if indim > outdim:
             dim_inter = indim // 2
@@ -306,19 +315,23 @@ class ResNeXt(nn.Module):
         return out
 
 class BasicBlock(nn.Module):
-    def __init__(self, indim, outdim):
+    def __init__(self, indim, outdim, affine=False):
         super(BasicBlock, self).__init__()
+        track_running_stats = affine
         self.is_dim_changed = (indim != outdim)
         # projection shortcutを使う様にセット
         if self.is_dim_changed:
-            self.shortcut = nn.Conv2d(indim, outdim, kernel_size=1)
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(indim, outdim, kernel_size=1),
+                nn.InstanceNorm2d(outdim, affine=affine, track_running_stats=track_running_stats)
+            )
         
         model = [nn.Conv2d(indim, outdim, kernel_size=3, padding=1), 
-                 nn.InstanceNorm2d(outdim),
+                 nn.InstanceNorm2d(outdim, affine=affine, track_running_stats=track_running_stats),
                  # LNorm(outdim),
                  nn.LeakyReLU(0.2, True),
                  nn.Conv2d(outdim, outdim, kernel_size=3, padding=1),
-                 nn.InstanceNorm2d(outdim),
+                 nn.InstanceNorm2d(outdim, affine=affine, track_running_stats=track_running_stats),
                  # LNorm(outdim),
                  # SEBlock(outdim),
                  # Shrinkage(outdim),
@@ -336,6 +349,83 @@ class BasicBlock(nn.Module):
         # Projection shortcutの場合
         if self.is_dim_changed:
             shortcut = self.shortcut(x)
+
+        out += shortcut
+        out = self.relu(out)
+
+        return out
+
+class ResGroup(nn.Module):
+    def __init__(self, indim, outdim, affine=False):
+        super(ResGroup, self).__init__()
+        self.is_dim_changed = (indim != outdim)
+        # projection shortcutを使う様にセット
+        if self.is_dim_changed:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(indim, outdim, kernel_size=1),
+                nn.InstanceNorm2d(outdim, affine=affine)
+            )
+        
+        dim_inter = outdim*2
+        model = [nn.Conv2d(indim, dim_inter, 1), 
+                 nn.InstanceNorm2d(dim_inter, affine=affine),
+                 nn.LeakyReLU(0.2, True),
+                 nn.Conv2d(dim_inter, dim_inter, 3, padding=1, groups=dim_inter//32),
+                 nn.InstanceNorm2d(dim_inter, affine=affine),
+                 nn.LeakyReLU(0.2, True),
+                 nn.Conv2d(dim_inter, outdim, 1),
+                 nn.InstanceNorm2d(outdim, affine=affine),
+        ]
+
+        self.model = nn.Sequential(*model)
+
+        self.relu = nn.LeakyReLU(0.2, True)
+
+    def forward(self, x):
+        shortcut = x
+
+        out = self.model(x)
+        
+        # Projection shortcutの場合
+        if self.is_dim_changed:
+            shortcut = self.shortcut(x)
+
+        out += shortcut
+        out = self.relu(out)
+
+        return out
+
+class ResGroupDown(nn.Module):
+    def __init__(self, indim, outdim):
+        super(ResGroupDown, self).__init__()
+        self.shortcut = nn.Sequential(
+            nn.MaxPool2d(3, stride=2, padding=1),
+            nn.Conv2d(indim, outdim, kernel_size=1),
+            nn.InstanceNorm2d(outdim)
+        )
+        
+        dim_inter = outdim*2
+        model = [nn.Conv2d(indim, dim_inter, 1), 
+                 nn.InstanceNorm2d(dim_inter),
+                 nn.LeakyReLU(0.2, True),
+                 nn.Conv2d(dim_inter, dim_inter, 3, padding=1, groups=dim_inter//32, stride=2),
+                 nn.InstanceNorm2d(dim_inter),
+                 nn.LeakyReLU(0.2, True),
+                 nn.Conv2d(dim_inter, outdim, 1),
+                 nn.InstanceNorm2d(outdim),
+        ]
+
+        self.model = nn.Sequential(*model)
+
+        self.relu = nn.LeakyReLU(0.2, True)
+
+    def forward(self, x):
+        shortcut = x
+
+        out = self.model(x)
+        
+        # Projection shortcutの場合
+        shortcut = self.shortcut(x)
 
         out += shortcut
         out = self.relu(out)
@@ -728,3 +818,121 @@ class LNorm(nn.Module):
     def forward(self, x):
         x = nn.functional.layer_norm(x, x.size()[1:])
         return x
+
+
+class FPA(nn.Module):
+    def __init__(self, channels=2048):
+        """
+        Feature Pyramid Attention
+        :type channels: int
+        """
+        super(FPA, self).__init__()
+        channels_mid = int(channels/4)
+
+        self.channels_cond = channels
+
+        # Master branch
+        self.conv_master = nn.Conv2d(self.channels_cond, channels, kernel_size=1, bias=False)
+        self.bn_master = nn.BatchNorm2d(channels)
+
+        # Global pooling branch
+        self.conv_gpb = nn.Conv2d(self.channels_cond, channels, kernel_size=1, bias=False)
+        self.bn_gpb = nn.Identity()
+
+        # C333 because of the shape of last feature maps is (16, 16).
+        self.conv7x7_1 = nn.Conv2d(self.channels_cond, channels_mid, kernel_size=(7, 7), stride=2, padding=3, bias=False)
+        self.bn1_1 = nn.BatchNorm2d(channels_mid)
+        self.conv5x5_1 = nn.Conv2d(channels_mid, channels_mid, kernel_size=(5, 5), stride=2, padding=2, bias=False)
+        self.bn2_1 = nn.BatchNorm2d(channels_mid)
+        self.conv3x3_1 = nn.Conv2d(channels_mid, channels_mid, kernel_size=(3, 3), stride=2, padding=1, bias=False)
+        self.bn3_1 = nn.BatchNorm2d(channels_mid)
+
+        self.conv7x7_2 = nn.Conv2d(channels_mid, channels_mid, kernel_size=(7, 7), stride=1, padding=3, bias=False)
+        self.bn1_2 = nn.BatchNorm2d(channels_mid)
+        self.conv5x5_2 = nn.Conv2d(channels_mid, channels_mid, kernel_size=(5, 5), stride=1, padding=2, bias=False)
+        self.bn2_2 = nn.BatchNorm2d(channels_mid)
+        self.conv3x3_2 = nn.Conv2d(channels_mid, channels_mid, kernel_size=(3, 3), stride=1, padding=1, bias=False)
+        self.bn3_2 = nn.BatchNorm2d(channels_mid)
+
+        # Convolution Upsample
+        self.conv_upsample_3 = nn.ConvTranspose2d(channels_mid, channels_mid, kernel_size=4, stride=2, padding=1, bias=False)
+        self.bn_upsample_3 = nn.BatchNorm2d(channels_mid)
+
+        self.conv_upsample_2 = nn.ConvTranspose2d(channels_mid, channels_mid, kernel_size=4, stride=2, padding=1, bias=False)
+        self.bn_upsample_2 = nn.BatchNorm2d(channels_mid)
+
+        self.conv_upsample_1 = nn.ConvTranspose2d(channels_mid, channels, kernel_size=4, stride=2, padding=1, bias=False)
+        self.bn_upsample_1 = nn.BatchNorm2d(channels)
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        """
+        :param x: Shape: [b, 2048, h, w]
+        :return: out: Feature maps. Shape: [b, 2048, h, w]
+        """
+        # Master branch
+        x_master = self.conv_master(x)
+        x_master = self.bn_master(x_master)
+
+        # Global pooling branch
+        x_gpb = nn.AvgPool2d(x.shape[2:])(x).view(x.shape[0], self.channels_cond, 1, 1)
+        x_gpb = self.conv_gpb(x_gpb)
+        x_gpb = self.bn_gpb(x_gpb)
+
+        # Branch 1
+        x1_1 = self.conv7x7_1(x)
+        x1_1 = self.bn1_1(x1_1)
+        x1_1 = self.relu(x1_1)
+        x1_2 = self.conv7x7_2(x1_1)
+        x1_2 = self.bn1_2(x1_2)
+
+        # Branch 2
+        x2_1 = self.conv5x5_1(x1_1)
+        x2_1 = self.bn2_1(x2_1)
+        x2_1 = self.relu(x2_1)
+        x2_2 = self.conv5x5_2(x2_1)
+        x2_2 = self.bn2_2(x2_2)
+
+        # Branch 3
+        x3_1 = self.conv3x3_1(x2_1)
+        x3_1 = self.bn3_1(x3_1)
+        x3_1 = self.relu(x3_1)
+        x3_2 = self.conv3x3_2(x3_1)
+        x3_2 = self.bn3_2(x3_2)
+
+        # Merge branch 1 and 2
+        x3_upsample = self.relu(self.bn_upsample_3(self.conv_upsample_3(x3_2)))
+        x2_merge = self.relu(x2_2 + x3_upsample)
+        x2_upsample = self.relu(self.bn_upsample_2(self.conv_upsample_2(x2_merge)))
+        x1_merge = self.relu(x1_2 + x2_upsample)
+
+        x_master = x_master * self.relu(self.bn_upsample_1(self.conv_upsample_1(x1_merge)))
+
+        #
+        out = self.relu(x_master + x_gpb)
+
+        return out
+
+
+class FPAup(nn.Module):
+    def __init__(self, in_channels, out_channels, block, num):
+        super(FPAup, self).__init__()
+
+        self.conv = DownBlock(in_channels*2, out_channels, block, num)
+
+    def forward(self, x1, x2=None):
+        if torch.is_tensor(x2):
+            # input is CHW
+            diffY = x2.size()[2] - x1.size()[2]
+            diffX = x2.size()[3] - x1.size()[3]
+
+            x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
+                        diffY // 2, diffY - diffY // 2])
+            # if you have padding issues, see
+            # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+            # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+            x = torch.cat([x2, x1], dim=1)
+            return self.conv(x)
+        else:
+            return self.conv2(x1)

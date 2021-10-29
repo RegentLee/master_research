@@ -77,13 +77,15 @@ class MasterPix2PixDataset(BaseDataset):
             # my_transforms.clip(),
             my_transforms.preprocess(input_n),
             transforms.ToTensor(),
+            my_transforms.pad()
             # transforms.Normalize((0.5,), (0.5,)),
             ])
 
         transform_B = transforms.Compose([
             # my_transforms.clip(),
             my_transforms.preprocessB(input_n),
-            transforms.ToTensor()
+            transforms.ToTensor(),
+            my_transforms.pad()
             ])
 
         # self.Flip = my_transforms.rotate()
@@ -108,10 +110,10 @@ class MasterPix2PixDataset(BaseDataset):
             data_A += [my_transforms.rotate(i) for i in data_A]
             data_B += [my_transforms.rotate(i) for i in data_B]
             self.data_A = [transform_A(i) for i in data_A]
-            self.data_B = [transform_B(i) for i in data_B]
+            self.data_B = [transform_A(i) for i in data_B]
         else:
             self.data_A = [transform_A(i) for i in val_A]
-            self.data_B = [transform_B(i) for i in val_B]
+            self.data_B = [transform_A(i) for i in val_B]
 
         # self.choose = my_transforms.choose()
 
@@ -119,11 +121,13 @@ class MasterPix2PixDataset(BaseDataset):
         self.y = my_util.y
         self.A = []
         self.B = []
+        self.idx = []
 
         for i in range(len(self.data_A)):
             temp = my_transforms.crop(self.x, self.y, self.data_A[i], self.data_B[i])
             self.A += temp[0]
             self.B += temp[1]
+            self.idx += temp[2]
 
 
     def __getitem__(self, index):
@@ -148,21 +152,24 @@ class MasterPix2PixDataset(BaseDataset):
             self.y = my_util.y
             self.A = []
             self.B = []
+            self.idx = []
 
             for i in range(len(self.data_A)):
                 temp = my_transforms.crop(self.x, self.y, self.data_A[i], self.data_B[i])
                 self.A += temp[0]
                 self.B += temp[1]
-                # print(len(self.data_B), len(self.B))
+                self.idx += temp[2]
 
         A = self.A[index]
 
         B = self.B[index]
 
+        idx = torch.tensor(self.idx[index], dtype=torch.long)
+
         # if not my_util.val:
         #     A, B = self.choose(A, B)
         
-        return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
+        return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path, 'idx': idx}
 
     def __len__(self):
         """Return the total number of images."""
