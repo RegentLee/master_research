@@ -109,11 +109,14 @@ class MasterPix2PixDataset(BaseDataset):
         if not my_util.val:
             data_A += [my_transforms.rotate(i) for i in data_A]
             data_B += [my_transforms.rotate(i) for i in data_B]
-            self.data_A = [transform_A(i) for i in data_A]
-            self.data_B = [transform_A(i) for i in data_B]
+            self.data_A = [transform_B(i) for i in data_A]
+            self.data_B = [transform_B(i) for i in data_B]
+            # temp = self.data_A
+            # self.data_A += self.data_B
+            # self.data_B += temp
         else:
-            self.data_A = [transform_A(i) for i in val_A]
-            self.data_B = [transform_A(i) for i in val_B]
+            self.data_A = [transform_B(i) for i in val_A]
+            self.data_B = [transform_B(i) for i in val_B]
 
         # self.choose = my_transforms.choose()
 
@@ -127,8 +130,12 @@ class MasterPix2PixDataset(BaseDataset):
             temp = my_transforms.crop(self.x, self.y, self.data_A[i], self.data_B[i])
             self.A += temp[0]
             self.B += temp[1]
-            self.idx += temp[2]
+            # self.idx += temp[2]
 
+        if not my_util.val:
+            self.idx = [-1 if i < len(self.A)//2 else 1 for i in range(len(self.A))]
+        else:
+            self.idx = [-1]*len(self.A)
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -158,13 +165,18 @@ class MasterPix2PixDataset(BaseDataset):
                 temp = my_transforms.crop(self.x, self.y, self.data_A[i], self.data_B[i])
                 self.A += temp[0]
                 self.B += temp[1]
-                self.idx += temp[2]
+                # self.idx += temp[2]
+
+            if not my_util.val:
+                self.idx = [-1 if i < len(self.A)//2 else 1 for i in range(len(self.A))]
+            else:
+                self.idx = [-1]*len(self.A)
 
         A = self.A[index]
 
         B = self.B[index]
 
-        idx = torch.tensor(self.idx[index], dtype=torch.long)
+        idx = torch.tensor(self.idx[index]).view(1, 1)# , dtype=torch.long)
 
         # if not my_util.val:
         #     A, B = self.choose(A, B)
