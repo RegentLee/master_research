@@ -111,9 +111,9 @@ class MasterPix2PixDataset(BaseDataset):
             data_B += [my_transforms.rotate(i) for i in data_B]
             self.data_A = [transform_B(i) for i in data_A]
             self.data_B = [transform_B(i) for i in data_B]
-            # temp = self.data_A
-            # self.data_A += self.data_B
-            # self.data_B += temp
+            temp = self.data_A
+            self.data_A += self.data_B
+            self.data_B += temp
         else:
             self.data_A = [transform_B(i) for i in val_A]
             self.data_B = [transform_B(i) for i in val_B]
@@ -133,9 +133,9 @@ class MasterPix2PixDataset(BaseDataset):
             # self.idx += temp[2]
 
         if not my_util.val:
-            self.idx = [-1 if i < len(self.A)//2 else 1 for i in range(len(self.A))]
+            self.idx = [0 if i < len(self.A)//2 else 1 for i in range(len(self.A))]
         else:
-            self.idx = [-1]*len(self.A)
+            self.idx = [0]*len(self.A)
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -168,9 +168,9 @@ class MasterPix2PixDataset(BaseDataset):
                 # self.idx += temp[2]
 
             if not my_util.val:
-                self.idx = [-1 if i < len(self.A)//2 else 1 for i in range(len(self.A))]
+                self.idx = [0 if i < len(self.A)//2 else 1 for i in range(len(self.A))]
             else:
-                self.idx = [-1]*len(self.A)
+                self.idx = [0]*len(self.A)
 
         A = self.A[index]
 
