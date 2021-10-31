@@ -110,10 +110,10 @@ class MasterPix2PixDataset(BaseDataset):
             data_A += [my_transforms.rotate(i) for i in data_A]
             data_B += [my_transforms.rotate(i) for i in data_B]
             self.data_A = [transform_A(i) for i in data_A]
-            self.data_B = [transform_A(i) for i in data_B]
+            self.data_B = [transform_B(i) for i in data_B]
         else:
             self.data_A = [transform_A(i) for i in val_A]
-            self.data_B = [transform_A(i) for i in val_B]
+            self.data_B = [transform_B(i) for i in val_B]
 
         # self.choose = my_transforms.choose()
 

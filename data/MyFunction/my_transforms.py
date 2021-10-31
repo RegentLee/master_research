@@ -87,7 +87,7 @@ def crop(x, y, imgA, imgB):
             idx_j += 1
         idx_i += 1
         idx_j = 0
-    return crop_imgA, crop_imgB# , idx
+    return crop_imgA, crop_imgB, idx
 
 class clip:
     def __init__(self):

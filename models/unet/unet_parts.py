@@ -108,20 +108,21 @@ class Up(nn.Module):
         super().__init__()
 
         # self.a = nn.parameter.Parameter(torch.Tensor(0.5))
+        affine = True
 
         # if bilinear, use the normal convolutions to reduce the number of channels
         self.up1 = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels*4, kernel_size=3, padding=1),
                 nn.PixelShuffle(2),
-                nn.InstanceNorm2d(out_channels, affine=True, track_running_stats=True)
+                nn.InstanceNorm2d(out_channels, affine=affine, track_running_stats=affine)
             )
         if in_channels == out_channels:
             in_channels = in_channels*2
         self.conv1 = nn.Sequential(
-            DownBlock(in_channels, out_channels, block, num, affine=True)
+            DownBlock(in_channels, out_channels, block, num, affine=affine)
         )
         self.conv2 = nn.Sequential(
-            DownBlock(out_channels, out_channels, block, num, affine=True)
+            DownBlock(out_channels, out_channels, block, num, affine=affine)
         )
         '''if bilinear:
             self.up = nn.Sequential(

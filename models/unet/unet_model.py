@@ -158,38 +158,38 @@ class Decoder(nn.Module):
         
         ngf = 64
         self.outc = nn.Sequential(
-            nn.Conv2d(ngf, n_classes, kernel_size=1, bias=False), # (1, 64, 64) <- (64, 64, 64)
+            nn.Conv2d(ngf, n_classes, kernel_size=1, bias=True), # (1, 64, 64) <- (64, 64, 64)
             # nn.InstanceNorm2d(ngf),
             # nn.LeakyReLU(0.2, True),
         )
         self.up1 = nn.Sequential(
             nn.ConvTranspose2d(ngf*2*2, ngf, kernel_size=4, stride=2, padding=1), # (64, 64, 64) <- (128, 32, 32)
-            nn.InstanceNorm2d(ngf, affine=True),
+            nn.InstanceNorm2d(ngf, affine=True, track_running_stats=True),
             nn.LeakyReLU(0.2, True),
         )
         self.up2 = nn.Sequential(
             nn.ConvTranspose2d(ngf*4*2, ngf*2, kernel_size=4, stride=2, padding=1), # (128, 32, 32) <- (256, 16, 16)
-            nn.InstanceNorm2d(ngf*2, affine=True),
+            nn.InstanceNorm2d(ngf*2, affine=True, track_running_stats=True),
             nn.LeakyReLU(0.2, True),
         )
         self.up3 = nn.Sequential(
             nn.ConvTranspose2d(ngf*8*2, ngf*4, kernel_size=4, stride=2, padding=1), # (256, 16, 16) <- (512, 8, 8)
-            nn.InstanceNorm2d(ngf*4, affine=True),
+            nn.InstanceNorm2d(ngf*4, affine=True, track_running_stats=True),
             nn.LeakyReLU(0.2, True),
         )
         self.up4 = nn.Sequential(
             nn.ConvTranspose2d(ngf*16*2, ngf*8, kernel_size=4, stride=2, padding=1), # (512, 8, 8) <- (1024, 4, 4)
-            nn.InstanceNorm2d(ngf*8, affine=True),
+            nn.InstanceNorm2d(ngf*8, affine=True, track_running_stats=True),
             nn.LeakyReLU(0.2, True),
         )
         self.up5 = nn.Sequential(
             nn.ConvTranspose2d(ngf*32*2, ngf*16, kernel_size=4, stride=2, padding=1), # (1024, 4, 4) <- (2048, 2, 2)
-            nn.InstanceNorm2d(ngf*16, affine=True),
+            nn.InstanceNorm2d(ngf*16, affine=True, track_running_stats=True),
             nn.LeakyReLU(0.2, True),
         )
         self.up6 = nn.Sequential(
             nn.ConvTranspose2d(ngf*64, ngf*32, kernel_size=4, stride=2, padding=1), # (2048, 2, 2) <- (4096, 1, 1)
-            nn.InstanceNorm2d(ngf*32, affine=True),
+            nn.InstanceNorm2d(ngf*32, affine=True, track_running_stats=True),
             nn.LeakyReLU(0.2, True),
         )
 

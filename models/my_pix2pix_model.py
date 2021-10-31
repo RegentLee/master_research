@@ -86,10 +86,10 @@ class MyPix2PixModel(BaseModel):
         # self.net = MyResNet50Generator(opt.input_nc, opt.output_nc, opt.ngf, 
         #                         norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
         #                         use_dropout=(not opt.no_dropout), n_blocks=50)
-        # self.net = MyUNetGenerator(opt.input_nc, opt.output_nc, opt.ngf, 
-        #                         norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
-        #                         use_dropout=(not opt.no_dropout))
-        self.net = Generator(opt.input_nc, opt.output_nc)
+        self.net = MyUNetGenerator(opt.input_nc, opt.output_nc, opt.ngf, 
+                                norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
+                                use_dropout=(not opt.no_dropout))
+        # self.net = Generator(opt.input_nc, opt.output_nc)
         # self.net = networks.UnetGenerator(opt.input_nc, opt.output_nc, 6, opt.ngf, norm_layer=networks.get_norm_layer(norm_type=opt.norm), use_dropout=(not opt.no_dropout))
         self.netG = networks.init_net(self.net, opt.init_type, opt.init_gain, self.gpu_ids)
         summary(self.net, input_data=[torch.zeros([1, 1, 64, 64])], depth=15) #, torch.zeros(1, dtype=torch.long)
@@ -98,9 +98,9 @@ class MyPix2PixModel(BaseModel):
             # self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
             #                               opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
             # netD = networks.PixelDiscriminator(opt.output_nc, opt.ndf, norm_layer=networks.get_norm_layer(norm_type=opt.norm))
-            netD = MyPixelDiscriminator(opt.input_nc + opt.output_nc, nn.Identity)
+            netD = MyPixelDiscriminator(opt.input_nc + opt.output_nc)
             self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
-            netPixel = MyPixelDiscriminator(opt.output_nc, nn.Identity)
+            netPixel = MyPixelDiscriminator(opt.output_nc)
             self.netPixel = networks.init_net(netPixel, opt.init_type, opt.init_gain, self.gpu_ids)
             summary(self.netD, input_size=(1, 2, 64, 64), depth=10)
             summary(self.netPixel, input_size=(1, 1, 64, 64), depth=10)
@@ -141,8 +141,8 @@ class MyPix2PixModel(BaseModel):
         """
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
-        self.idt_B = input['B' if AtoB else 'A'].to(self.device)
-        self.real_B = self._shortcut(self.idt_B)
+        self.real_B = input['B' if AtoB else 'A'].to(self.device)
+        # self.real_B = self._shortcut(self.idt_B)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
         self.idx = input['idx'].to(self.device)
         self.a = self._shortcut(self.real_A)
@@ -318,6 +318,7 @@ class MyPix2PixModel(BaseModel):
         # self.loss_G_real = self.criterionGAN(real - fake, False)
         self.loss_G_GAN = (self.loss_G_fake + self.loss_G_real) * 0.5
         
+        '''
         # Fake
         fake_B = self.fake_B
         pred_fake = self.netPixel(fake_B)
@@ -329,7 +330,7 @@ class MyPix2PixModel(BaseModel):
         self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True, True)
         self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False, True)
         self.loss_G_GAN += (self.loss_G_fake + self.loss_G_real) * 0.5
-
+        '''
         # _, _, r_a = self.netPixel(self.a)
         # self.loss_G_GAN += (self.criterionAB(f_b, torch.ones_like(f_b)) + self.criterionAB(r_b, torch.ones_like(r_b)) + self.criterionAB(r_a, torch.zeros_like(r_a))) * 0.33
         
@@ -426,18 +427,18 @@ class MyPix2PixModel(BaseModel):
             self.optimizer_D.zero_grad()     # set D's gradients to zero
             self.backward_D()                # calculate gradients for D
             self.optimizer_D.step()          # update D's weights
-        
+        '''
         # update Pixel
         for _ in range(1):
             self.set_requires_grad(self.netPixel, True)  # enable backprop for Pixel
             self.optimizer_Pixel.zero_grad()     # set Pixel's gradients to zero
             self.backward_Pixel()                # calculate gradients for Pixel
             self.optimizer_Pixel.step()          # update Pixel's weights
-        
+        '''
         # update G
         for _ in range(1):
             self.set_requires_grad(self.netD, False)  # D requires no gradients when optimizing G
-            self.set_requires_grad(self.netPixel, False) 
+            # self.set_requires_grad(self.netPixel, False) 
             self.optimizer_G.zero_grad()        # set G's gradients to zero
             self.backward_G()                   # calculate graidents for G
             self.optimizer_G.step()             # udpate G's weights
@@ -463,7 +464,7 @@ class MyUNetGenerator(nn.Module):
 
         # self.PE = PositionEmbedding()
 
-        model = [UNet(input_nc, 1, True)]
+        model = [UNet(input_nc, output_nc, True)]
 
         model += [nn.Tanh()]
         # model += [nn.Hardtanh()]
@@ -1170,12 +1171,13 @@ class ResidualBlock(nn.Module):
     """Residual Block with instance normalization."""
     def __init__(self, dim_in, dim_out):
         super(ResidualBlock, self).__init__()
+        instance = False
         self.main = nn.Sequential(
             nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.InstanceNorm2d(dim_out, affine=True, track_running_stats=True),
+            nn.InstanceNorm2d(dim_out, affine=instance, track_running_stats=instance),
             nn.ReLU(inplace=True),
             nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.InstanceNorm2d(dim_out, affine=True, track_running_stats=True))
+            nn.InstanceNorm2d(dim_out, affine=instance, track_running_stats=instance))
 
     def forward(self, x):
         return x + self.main(x)
@@ -1186,27 +1188,32 @@ class Generator(nn.Module):
     def __init__(self, input_nc, output_nc, conv_dim=64, repeat_num=6):
         super(Generator, self).__init__()
 
+        instance = False
         layers = []
-        layers.append(nn.Conv2d(input_nc + 1, conv_dim, kernel_size=7, stride=1, padding=3, bias=False))
-        layers.append(nn.InstanceNorm2d(conv_dim, affine=True, track_running_stats=True))
+        layers.append(nn.Conv2d(input_nc, conv_dim, kernel_size=7, stride=1, padding=3, bias=False))
+        layers.append(nn.InstanceNorm2d(conv_dim, affine=instance, track_running_stats=instance))
         layers.append(nn.ReLU(inplace=True))
 
         # Down-sampling layers.
         curr_dim = conv_dim
         for i in range(2):
             layers.append(nn.Conv2d(curr_dim, curr_dim*2, kernel_size=4, stride=2, padding=1, bias=False))
-            layers.append(nn.InstanceNorm2d(curr_dim*2, affine=True, track_running_stats=True))
+            layers.append(nn.InstanceNorm2d(curr_dim*2, affine=instance, track_running_stats=instance))
             layers.append(nn.ReLU(inplace=True))
             curr_dim = curr_dim * 2
 
         # Bottleneck layers.
-        for i in range(repeat_num):
+        for i in range(repeat_num//2):
+            layers.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
+
+        instance = True
+        for i in range(repeat_num//2):
             layers.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
 
         # Up-sampling layers.
         for i in range(2):
             layers.append(nn.ConvTranspose2d(curr_dim, curr_dim//2, kernel_size=4, stride=2, padding=1, bias=False))
-            layers.append(nn.InstanceNorm2d(curr_dim//2, affine=True, track_running_stats=True))
+            layers.append(nn.InstanceNorm2d(curr_dim//2, affine=instance, track_running_stats=instance))
             layers.append(nn.ReLU(inplace=True))
             curr_dim = curr_dim // 2
 
@@ -1214,11 +1221,11 @@ class Generator(nn.Module):
         layers.append(nn.Tanh())
         self.main = nn.Sequential(*layers)
 
-    def forward(self, x, c):
+    def forward(self, x):
         # Replicate spatially and concatenate domain information.
         # Note that this type of label conditioning does not work at all if we use reflection padding in Conv2d.
         # This is because instance normalization ignores the shifting (or bias) effect.
-        c = c.view(c.size(0), c.size(1), 1, 1)
-        c = c.repeat(1, 1, x.size(2), x.size(3))
-        x = torch.cat([x, c], dim=1)
+        # c = c.view(c.size(0), c.size(1), 1, 1)
+        # c = c.repeat(1, 1, x.size(2), x.size(3))
+        # x = torch.cat([x, c], dim=1)
         return self.main(x)
