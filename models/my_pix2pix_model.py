@@ -86,10 +86,10 @@ class MyPix2PixModel(BaseModel):
         # self.net = MyResNet50Generator(opt.input_nc, opt.output_nc, opt.ngf, 
         #                         norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
         #                         use_dropout=(not opt.no_dropout), n_blocks=50)
-        self.net = MyUNetGenerator(opt.input_nc, opt.output_nc, opt.ngf, 
-                                norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
-                                use_dropout=(not opt.no_dropout))
-        # self.net = Generator(opt.input_nc, opt.output_nc)
+        # self.net = MyUNetGenerator(opt.input_nc, opt.output_nc, opt.ngf, 
+        #                         norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
+        #                         use_dropout=(not opt.no_dropout))
+        self.net = EnDeCoder(opt.input_nc, opt.output_nc)
         # self.net = networks.UnetGenerator(opt.input_nc, opt.output_nc, 6, opt.ngf, norm_layer=networks.get_norm_layer(norm_type=opt.norm), use_dropout=(not opt.no_dropout))
         self.netG = networks.init_net(self.net, opt.init_type, opt.init_gain, self.gpu_ids)
         summary(self.net, input_data=[torch.zeros([1, 1, 64, 64])], depth=15) #, torch.zeros(1, dtype=torch.long)
@@ -98,7 +98,7 @@ class MyPix2PixModel(BaseModel):
             # self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
             #                               opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
             # netD = networks.PixelDiscriminator(opt.output_nc, opt.ndf, norm_layer=networks.get_norm_layer(norm_type=opt.norm))
-            netD = MyPixelDiscriminator(opt.input_nc + opt.output_nc)
+            netD = MyPixelDiscriminator(opt.input_nc + opt.output_nc, nn.Identity)
             self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
             netPixel = MyPixelDiscriminator(opt.output_nc)
             self.netPixel = networks.init_net(netPixel, opt.init_type, opt.init_gain, self.gpu_ids)
@@ -168,7 +168,7 @@ class MyPix2PixModel(BaseModel):
         # fake_AB = torch.cat((self.real_A, fake_AB), 1) 
         pred_fake = self.netD(fake_AB.detach())
         # fake1, fake2, fake3, fake4, fake = self.netD(fake_AB.detach())
-        ## self.loss_D_fake = self.criterionGAN(pred_fake, False)
+        self.loss_D_fake = self.criterionGAN(pred_fake, False)
         # self.loss_D_fake = self.criterionGAN(pred_fake, False) + self.criterionGAN(fake_all, False)
         # Real
         real_AB = torch.cat((self.real_A, self.real_B), 1)
@@ -176,8 +176,10 @@ class MyPix2PixModel(BaseModel):
         # real_AB = torch.cat((self.real_A, real_AB), 1)
         pred_real = self.netD(real_AB)
         # real1, real2, real3, real4, real = self.netD(real_AB)
-        ## self.loss_D_real = self.criterionGAN(pred_real, True)
+        self.loss_D_real = self.criterionGAN(pred_real, True)
         # self.loss_D_real = self.criterionGAN(pred_real, True) + self.criterionGAN(real_all, True)
+
+        # gp, _ = networks.cal_gradient_penalty(self.netD, real_AB, fake_AB, self.device)
         '''
         """Citation:
         Jolicoeur-Martineau, Alexia. 
@@ -186,15 +188,15 @@ class MyPix2PixModel(BaseModel):
         """
         '''
         # Fake
-        self.loss_D_fake = self.criterionGAN(pred_fake - pred_real.detach(), False)
+        ## self.loss_D_fake = self.criterionGAN(pred_fake - pred_real.detach(), False)
 
         # Real
-        self.loss_D_real = self.criterionGAN(pred_real - pred_fake.detach(), True)
+        ## self.loss_D_real = self.criterionGAN(pred_real - pred_fake.detach(), True)
 
         # self.loss_D_fake = self.criterionGAN(fake - real, False)
         # self.loss_D_real = self.criterionGAN(real - fake, True)
         # combine loss and calculate gradients
-        self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+        self.loss_D = self.loss_D_fake + self.loss_D_real#  + gp
 
         # self.loss_D_fake = self.criterionGAN(fake_all - real_all, False)
         # self.loss_D_real = self.criterionGAN(real_all - fake_all, True)
@@ -305,18 +307,18 @@ class MyPix2PixModel(BaseModel):
         pred_fake = self.netD(fake_AB)
         # fake1, fake2, fake3, fake4, fake = self.netD(fake_AB)
         # Real
-        real_AB = torch.cat((self.real_A, self.real_B), 1)
+        ## real_AB = torch.cat((self.real_A, self.real_B), 1)
         # real_AB = self.real_B - self.real_A
         # real_AB = torch.cat((self.real_A, real_AB), 1)
         # real1, real2, real3, real4, real = self.netD(real_AB)
-        pred_real = self.netD(real_AB)
-        ## self.loss_G_GAN = self.criterionGAN(pred_fake, True)
+        ## pred_real = self.netD(real_AB)
+        self.loss_G_GAN = self.criterionGAN(pred_fake, True)
         # self.loss_G_GAN = self.criterionGAN(pred_fake, True) + self.criterionGAN(fake_all, True)
-        self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True, True)
-        self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False, True)
+        ## self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True, True)
+        ## self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False, True)
         # self.loss_G_fake = self.criterionGAN(fake - real, True)
         # self.loss_G_real = self.criterionGAN(real - fake, False)
-        self.loss_G_GAN = (self.loss_G_fake + self.loss_G_real) * 0.5
+        ## self.loss_G_GAN = (self.loss_G_fake + self.loss_G_real) * 0.5
         
         '''
         # Fake
@@ -1229,3 +1231,172 @@ class Generator(nn.Module):
         # c = c.repeat(1, 1, x.size(2), x.size(3))
         # x = torch.cat([x, c], dim=1)
         return self.main(x)
+
+
+class EnDeCoder(nn.Module):
+    def __init__(self, n_channels, n_classes):
+        super(EnDeCoder, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+
+        self.encoder = Encoder(n_channels)
+        self.decoder = Decoder(n_classes)
+
+        self.tanh = nn.Tanh()
+        
+
+    def forward(self, x):
+        logits = self.decoder(self.encoder(x))
+        return self.tanh(logits + self._shortcut(x))
+
+    def _shortcut(self, x):
+        x = (x + 1)*my_util.distance[-1]
+        m_max = torch.tensor(my_util.distance[-1], dtype=torch.float, device=x.device)
+        m_min = torch.tensor(0, dtype=torch.float, device=x.device)
+        x = torch.where(x > m_max, m_max, x)
+        x = (x - m_min)/(m_max - m_min)*2 - 1
+        return x
+
+class Encoder(nn.Module):
+    def __init__(self, n_channels):
+        super(Encoder, self).__init__()
+        
+        ngf = 64
+        self.inc = nn.Sequential(
+            nn.Conv2d(n_channels, ngf, kernel_size=1, bias=False), # (1, 64, 64) -> (64, 64, 64)
+            # nn.InstanceNorm2d(ngf),
+            # nn.LeakyReLU(0.2, True),
+        )
+        self.down1 = nn.Sequential(
+            nn.Conv2d(ngf, ngf*2, kernel_size=4, stride=2, padding=1), # (64, 64, 64) -> (128, 32, 32)
+            
+        )
+        self.down2 = nn.Sequential(
+            nn.InstanceNorm2d(ngf*2),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ngf*2, ngf*4, kernel_size=4, stride=2, padding=1), # (128, 32, 32) -> (256, 16, 16)
+            
+        )
+        self.down3 = nn.Sequential(
+            nn.InstanceNorm2d(ngf*4),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ngf*4, ngf*8, kernel_size=4, stride=2, padding=1), # (256, 16, 16) -> (512, 8, 8)
+            
+        )
+        self.down4 = nn.Sequential(
+            nn.InstanceNorm2d(ngf*8),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ngf*8, ngf*16, kernel_size=4, stride=2, padding=1), # (512, 8, 8) -> (1024, 4, 4)
+            
+        )
+        self.down5 = nn.Sequential(
+            nn.InstanceNorm2d(ngf*16),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ngf*16, ngf*32, kernel_size=4, stride=2, padding=1), # (1024, 4, 4) -> (2048, 2, 2)
+            
+        )
+        self.down6 = nn.Sequential(
+            nn.InstanceNorm2d(ngf*32),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ngf*32, ngf*64, kernel_size=4, stride=2, padding=1), # (2048, 2, 2) -> (4096, 1, 1)
+            nn.LeakyReLU(0.2, True),
+        )
+
+    def forward(self, x):
+        x0 = self.inc(x) # (1, 64, 64) -> (64, 64, 64)
+        x1 = self.down1(x0) # (64, 64, 64) -> (128, 32, 32)
+        x2 = self.down2(x1) # (128, 32, 32) -> (256, 16, 16)
+        x3 = self.down3(x2) # (256, 16, 16) -> (512, 8, 8)
+        x4 = self.down4(x3) # (512, 8, 8) -> (1024, 4, 4)
+        x5 = self.down5(x4) # (1024, 4, 4) -> (2048, 2, 2)
+        x6 = self.down6(x5) # (2048, 2, 2) -> (4096, 1, 1)
+        return x0, x1, x2, x3, x4, x5, x6
+
+class Decoder(nn.Module):
+    def __init__(self, n_classes):
+        super(Decoder, self).__init__()
+        
+        ngf = 64
+        self.outc = nn.Sequential(
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ngf, n_classes, kernel_size=1, bias=True), # (1, 64, 64) <- (64, 64, 64)
+            # nn.InstanceNorm2d(ngf),
+            # nn.LeakyReLU(0.2, True),
+        )
+        self.up1 = nn.Sequential(
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(ngf*2, ngf, kernel_size=4, stride=2, padding=1), # (64, 64, 64) <- (128, 32, 32)
+            # nn.InstanceNorm2d(ngf, affine=True, track_running_stats=True),
+            
+        )
+        self.adain1 = AdaIN(ngf)
+        self.up2 = nn.Sequential(
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(ngf*4, ngf*2, kernel_size=4, stride=2, padding=1), # (128, 32, 32) <- (256, 16, 16)
+            # nn.InstanceNorm2d(ngf*2, affine=True, track_running_stats=True),
+            
+        )
+        self.adain2 = AdaIN(ngf*2)
+        self.up3 = nn.Sequential(
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(ngf*8, ngf*4, kernel_size=4, stride=2, padding=1), # (256, 16, 16) <- (512, 8, 8)
+            # nn.InstanceNorm2d(ngf*4, affine=True, track_running_stats=True),
+            
+        )
+        self.adain3 = AdaIN(ngf*4)
+        self.up4 = nn.Sequential(
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(ngf*16, ngf*8, kernel_size=4, stride=2, padding=1), # (512, 8, 8) <- (1024, 4, 4)
+            # nn.InstanceNorm2d(ngf*8, affine=True, track_running_stats=True),
+            
+        )
+        self.adain4 = AdaIN(ngf*8)
+        self.up5 = nn.Sequential(
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(ngf*32, ngf*16, kernel_size=4, stride=2, padding=1), # (1024, 4, 4) <- (2048, 2, 2)
+            # nn.InstanceNorm2d(ngf*16, affine=True, track_running_stats=True),
+            
+        )
+        self.adain5 = AdaIN(ngf*16)
+        self.up6 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*64, ngf*32, kernel_size=4, stride=2, padding=1), # (2048, 2, 2) <- (4096, 1, 1)
+            # nn.InstanceNorm2d(ngf*32, affine=True, track_running_stats=True),
+            
+        )
+        self.adain6 = AdaIN(ngf*32)
+
+    def forward(self, code):
+        x0, x1, x2, x3, x4, x5, x6 = code
+        x = self.up6(x6) # (2048, 2, 2) <- (4096, 1, 1)
+        x = self.adain6(x, x5)
+        x = self.up5(x) # (1024, 4, 4) <- (2048, 2, 2)
+        x = self.adain5(x, x4)
+        x = self.up4(x) # (512, 8, 8) <- (1024, 4, 4)
+        x = self.adain4(x, x3)
+        x = self.up3(x) # (256, 16, 16) <- (512, 8, 8)
+        x = self.adain3(x, x2)
+        x = self.up2(x) # (128, 32, 32) <- (256, 16, 16)
+        x = self.adain2(x, x1)
+        x = self.up1(x) # (64, 64, 64) <- (128, 32, 32)
+        x = self.adain1(x, x0)
+        x = self.outc(x) # (1, 64, 64) <- (64, 64, 64)
+        return x
+
+class AdaIN(nn.Module):
+    def __init__(self, dim):
+        super(AdaIN, self).__init__()
+
+        indim = dim
+        outdim = dim
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.mean = nn.Conv2d(indim, outdim, kernel_size=1)
+        self.var = nn.Conv2d(indim, outdim, kernel_size=1)
+        self.IN = nn.InstanceNorm2d(outdim)
+
+    def forward(self, content, style):
+        style_pool = self.pool(style)
+        mean = self.mean(style_pool)
+        var = self.var(style_pool)
+        content = self.IN(content)
+
+        return mean*content + var
