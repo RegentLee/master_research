@@ -105,7 +105,7 @@ class MyPix2PixModel(BaseModel):
             self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
             # netPixel = MyPixelDiscriminator(opt.output_nc, nn.Identity)
             # self.netPixel = networks.init_net(netPixel, opt.init_type, opt.init_gain, self.gpu_ids)
-            summary(self.netD, input_size=(1, 1, 64, 64), depth=10)
+            summary(self.netD, input_data=[torch.zeros([1, 1, 64, 64]), torch.zeros([1])], depth=10)
             # summary(self.netPixel, input_size=(1, 1, 64, 64), depth=10)
 
         if self.isTrain:
@@ -183,26 +183,39 @@ class MyPix2PixModel(BaseModel):
         dydx_l2norm = torch.sqrt(torch.sum(dydx**2, dim=1))
         return torch.mean((dydx_l2norm-1)**2)
 
+    def r1_reg(self, d_out, x_in):
+        # zero-centered gradient penalty for real images
+        batch_size = x_in.size(0)
+        grad_dout = torch.autograd.grad(
+            outputs=d_out.sum(), inputs=x_in,
+            create_graph=True, retain_graph=True, only_inputs=True
+        )[0]
+        grad_dout2 = grad_dout.pow(2)
+        assert(grad_dout2.size() == x_in.size())
+        reg = 0.5 * grad_dout2.view(batch_size, -1).sum(1).mean(0)
+        return reg
+
     def backward_D(self):
         """Calculate GAN loss for the discriminator"""
         
         # Fake; stop backprop to the generator by detaching fake_B
         # fake_AB = torch.cat((self.real_A, self.fake_B.detach()), 1)  # we use conditional GANs; we need to feed both input and output to the discriminator
         fake_AB = self.fake_B
-        pred_fake, ab_fake = self.netD(fake_AB.detach())
+        pred_fake = self.netD(fake_AB.detach(), 1 - self.idx)
         self.loss_D_fake = self.criterionGAN(pred_fake, False)
         # self.loss_D_fake = self.criterionGAN(pred_fake, False) + self.criterionGAN(fake_all, False)
         # Real
-        real_AB = self.real_B
-        pred_real, ab_real = self.netD(real_AB)
+        real_AB = self.real_B.requires_grad_()
+        pred_real = self.netD(real_AB, 1 - self.idx)
         self.loss_D_real = self.criterionGAN(pred_real, True)
+        loss_reg = self.r1_reg(pred_real, real_AB)
         # self.loss_D_real = self.criterionGAN(pred_real, True) + self.criterionGAN(real_all, True)
 
         # Compute loss for gradient penalty.
-        alpha = torch.rand(real_AB.size(0), 1, 1, 1).to(self.device)
+        '''alpha = torch.rand(real_AB.size(0), 1, 1, 1).to(self.device)
         x_hat = (alpha * real_AB.data + (1 - alpha) * fake_AB.data).requires_grad_(True)
-        out_src, _ = self.netD(x_hat)
-        d_loss_gp = self.gradient_penalty(out_src, x_hat)
+        out_src = self.netD(x_hat, 1 - self.idx)
+        d_loss_gp = self.gradient_penalty(out_src, x_hat)'''
         '''
         """Citation:
         Jolicoeur-Martineau, Alexia. 
@@ -219,8 +232,8 @@ class MyPix2PixModel(BaseModel):
         # self.loss_D_fake = self.criterionGAN(fake - real, False)
         # self.loss_D_real = self.criterionGAN(real - fake, True)
         # combine loss and calculate gradients
-        self.loss_D = self.loss_D_fake + self.loss_D_real + self.opt.lambda_gp*d_loss_gp
-
+        self.loss_D = self.loss_D_fake + self.loss_D_real + loss_reg#  + self.opt.lambda_gp*d_loss_gp
+        '''
         if self.idx == 0:
             # label = torch.ones_like(ab_real)
             label = 1 - 0.1*torch.rand_like(ab_real)
@@ -228,6 +241,7 @@ class MyPix2PixModel(BaseModel):
             # label = torch.zeros_like(ab_real)
             label = 0.1*torch.rand_like(ab_real)
         self.loss_D += self.criterionAB(ab_real, label) * self.opt.lambda_cls
+        '''
         '''
         if self.idx == -1:
             label = False
@@ -325,7 +339,7 @@ class MyPix2PixModel(BaseModel):
         """Calculate GAN and L1 loss for the generator"""    
         # First, G(A) should fake the discriminator
         fake_AB = self.fake_B
-        pred_fake, ab_fake = self.netD(fake_AB)
+        pred_fake = self.netD(fake_AB, 1 - self.idx)
         # Real
         # real_AB = self.real_B
         # pred_real, ab_real = self.netD(real_AB)
@@ -337,7 +351,7 @@ class MyPix2PixModel(BaseModel):
         # self.loss_G_real = self.criterionGAN(real - fake, False)
         # self.loss_G_GAN = (self.loss_G_fake + self.loss_G_real) * 0.5
 
-        
+        '''
         if self.idx == 0:
             label = torch.ones_like(ab_fake)
             # label = 1 - 0.1*torch.rand_like(ab_fake)
@@ -345,6 +359,7 @@ class MyPix2PixModel(BaseModel):
             label = torch.zeros_like(ab_fake)
             # label = 0.1*torch.rand_like(ab_fake)
         self.loss_G_GAN += self.criterionAB(ab_fake, label)*self.opt.lambda_cls
+        '''
         '''
         _, org_real = self.netD(self.real_A)
         if self.idx == -1:
@@ -1172,13 +1187,14 @@ class MyPixelDiscriminator(nn.Module):
             norm_layer(ndf*8, affine=True),
             nn.LeakyReLU(0.2, True),
             # nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (1, 1, 1)
-            # nn.Conv2d(ndf*8, ndf*8, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (512, 1, 1)
+            nn.Conv2d(ndf*8, ndf*8, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (512, 1, 1)
             # nn.LayerNorm(ndf*8),
-            # nn.LeakyReLU(0.2, True),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ndf*8, 2, kernel_size=1) # (512, 1, 1) -> (2, 1, 1)
         )
 
-        self.tf = nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0) # (512, 4, 4) -> (1, 1, 1)
-        self.ab = nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0) # (512, 4, 4) -> (1, 1, 1)
+        # self.tf = nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0) # (512, 4, 4) -> (1, 1, 1)
+        # self.ab = nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0) # (512, 4, 4) -> (1, 1, 1)
         '''
             nn.Conv2d(ndf*8, ndf*16, kernel_size=4, stride=2, padding=1), #(512, 16, 16) -> (1024, 8, 8) # (512, 4, 4) -> (1, 1, 1)
             norm_layer(ndf*16),
@@ -1189,13 +1205,14 @@ class MyPixelDiscriminator(nn.Module):
             nn.Conv2d(ndf*32, 1, kernel_size=3, stride=3, padding=0) #(2048, 4, 4) -> (1, 1, 1)   
         )'''
 
-    def forward(self, x):
+    def forward(self, x, y):
         # return self.model(x).view(-1, 1)
         x = self.model(x)
-        tf = self.tf(x).view(-1, 1)
-        ab = self.ab(x).view(-1, 1)
+        x = x.view(x.size(0), -1)
+        idx = torch.LongTensor(range(x.size(0))).to(x.device)
+        out = x[idx, y.to(torch.long)]
 
-        return tf, ab
+        return out
 
 class LNorm(nn.Module):
     def __init__(self, dim):
