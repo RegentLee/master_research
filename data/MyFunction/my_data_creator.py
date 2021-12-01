@@ -22,7 +22,7 @@ class MyDataCreator:
 
     def MD_result_load(self):
         # dataload
-        data_root = '/gs/hs0/tga-science/lee/master_research/frames/'
+        data_root = '/gs/hs0/tga-science/lee/master_research/frames_10/'
         # 1byg
         traj_1byg_0 = md.load(data_root + '1byg_0.pdb')
         traj_1byg_1 = md.load(data_root + '1byg_1.pdb')
@@ -60,3 +60,70 @@ class MyDataCreator:
                 last = self.matrix(self.__temp[i][j])
                 self.data_A.append(last)
 
+
+class MyDataCreator2:
+    def __init__(self, opt):
+        self.data_A = []
+        self.data_B = []
+        self.val_A = []
+        self.val_B = []
+        self.__temp = []
+
+        self.matrix = my_get_matrix(opt)
+        self.loo_id = opt.LOOid
+        self.diff = opt.diff
+        self.model = opt.model
+
+        self.MD_result_load()
+        self.make_matrix()
+
+
+    def MD_result_load(self):
+        # dataload
+        data_root = '/gs/hs0/tga-science/lee/master_research/frames_10/'
+        data_root0 = '/gs/hs0/tga-science/lee/master_research/frames/'
+        # 1byg
+        traj_1byg_10 = md.load(data_root0 + '1byg_1.pdb')
+        traj_1byg_20 = md.load(data_root0 + '1byg_2.pdb')
+        traj_1byg_30 = md.load(data_root0 + '1byg_3.pdb')
+        traj_1byg_1 = md.load(data_root + '1byg_1.pdb')
+        traj_1byg_2 = md.load(data_root + '1byg_2.pdb')
+        traj_1byg_3 = md.load(data_root + '1byg_3.pdb')
+        self.__temp.append([traj_1byg_10, traj_1byg_20, traj_1byg_30, traj_1byg_1, traj_1byg_2, traj_1byg_3])
+
+        # 1qpj
+        traj_1qpj_10 = md.load(data_root0 + '1qpj_1.pdb')
+        traj_1qpj_20 = md.load(data_root0 + '1qpj_2.pdb')
+        traj_1qpj_30 = md.load(data_root0 + '1qpj_3.pdb')
+        traj_1qpj_1 = md.load(data_root + '1qpj_1.pdb')
+        traj_1qpj_2 = md.load(data_root + '1qpj_2.pdb')
+        traj_1qpj_3 = md.load(data_root + '1qpj_3.pdb')
+        self.__temp.append([traj_1qpj_10, traj_1qpj_20, traj_1qpj_30, traj_1qpj_1, traj_1qpj_2, traj_1qpj_3])
+
+        # 2dq7
+        traj_2dq7_10 = md.load(data_root0 + '2dq7_1.pdb')
+        traj_2dq7_20 = md.load(data_root0 + '2dq7_2.pdb')
+        traj_2dq7_30 = md.load(data_root0 + '2dq7_3.pdb')
+        traj_2dq7_1 = md.load(data_root + '2dq7_1.pdb')
+        traj_2dq7_2 = md.load(data_root + '2dq7_2.pdb')
+        traj_2dq7_3 = md.load(data_root + '2dq7_3.pdb')
+        self.__temp.append([traj_2dq7_10, traj_2dq7_20, traj_2dq7_30, traj_2dq7_1, traj_2dq7_2, traj_2dq7_3])
+
+        # 3a4o
+        traj_3a4o_10 = md.load(data_root0 + '3a4o_1.pdb')
+        traj_3a4o_20 = md.load(data_root0 + '3a4o_2.pdb')
+        traj_3a4o_30 = md.load(data_root0 + '3a4o_3.pdb')
+        traj_3a4o_1 = md.load(data_root + '3a4o_1.pdb')
+        traj_3a4o_2 = md.load(data_root + '3a4o_2.pdb')
+        traj_3a4o_3 = md.load(data_root + '3a4o_3.pdb')
+        self.__temp.append([traj_3a4o_10, traj_3a4o_20, traj_3a4o_30, traj_3a4o_1, traj_3a4o_2, traj_3a4o_3])
+
+
+    def make_matrix(self):
+        for i in range(len(self.__temp)):
+            for j in range(0, len(self.__temp[i])//2):
+                first = self.matrix(self.__temp[i][j])
+                self.data_B.append(first)
+            for j in range(len(self.__temp[i])//2, len(self.__temp[i])):
+                last = self.matrix(self.__temp[i][j])
+                self.data_A.append(last)

@@ -4,6 +4,8 @@ import torch
 
 from util import my_util
 
+import random
+
 
 class preprocess:
     def __init__(self, input_n):
@@ -37,7 +39,7 @@ class preprocessB:
         # image = image[np.newaxis, :, :]
         return image
 
-'''class rotate:
+class rotate:
     def __init__(self):
         self.Flip = transforms.Compose([
             transforms.RandomVerticalFlip(p=1),
@@ -45,16 +47,16 @@ class preprocessB:
             ])
         
     def __call__(self, A, B):
-        p = np.random.randint(0, 2)
-        if p == 1:
+        p = np.random.rand()
+        if p < 0.2:
             A = self.Flip(A)
             B = self.Flip(B)
-        return A, B'''
-
+        return A, B
+'''
 def rotate(image):
     img = image[::-1][:, ::-1]
     return img
-
+'''
 class CE:
     def __init__(self):
         pass
@@ -87,6 +89,7 @@ def crop(x, y, imgA, imgB):
             idx_j += 1
         idx_i += 1
         idx_j = 0
+    idx = [i if i < 8 else 15 - i for i in idx]
     return crop_imgA, crop_imgB, idx
 
 class clip:
@@ -111,28 +114,64 @@ class choose:
         pass
 
     def __call__(self, A, B):
-        n = np.random.randint(0, 2 + 1)
+        p = np.random.rand()
+        if p < 0.2:
+            # print(len(A[0]) - 256)
+            # n_m = min(len(A[0]) - 256, 5)
+            n_m = len(A[0]) - 240
+            # p = np.random.randint(1, 246 - 1)
+            n = np.random.randint(1, n_m + 1)
 
-        # print(A.shape)
+            # print(A.shape)
 
-        for i in range(n):
-            len_A = len(A[0])
-            c = np.random.randint(1, len_A - 1)
+            for _ in range(n + 1):
+                len_A = len(A[0])
+                c = np.random.randint(1, len_A - 1)
 
-            A = torch.cat([A[:, :c], A[:, c + 1:]], dim=1)
-            # print("dim 1", A.shape)
-            A = torch.cat([A[:, :, :c], A[:, :, c + 1:]], dim=2)
-            # print("dim 2", A.shape)
+                A = torch.cat([A[:, :c], A[:, c + 1:]], dim=1)
+                # print("dim 1", A.shape)
+                A = torch.cat([A[:, :, :c], A[:, :, c + 1:]], dim=2)
+                # print("dim 2", A.shape)
 
-            B = torch.cat([B[:, :c], B[:, c + 1:]], dim=1)
-            B = torch.cat([B[:, :, :c], B[:, :, c + 1:]], dim=2)
+                B = torch.cat([B[:, :c], B[:, c + 1:]], dim=1)
+                B = torch.cat([B[:, :, :c], B[:, :, c + 1:]], dim=2)
 
         return A, B
 
+class mask:
+    def __init__(self):
+        pass
+
+    def __call__(self, A, B):
+        if not my_util.val:    
+            p = np.random.rand()
+            if p < 0.8:
+                # print(len(A[0]) - 256)
+                # n_m = min(len(A[0]) - 256, 5)
+                # n_m = len(A[0]) - 240
+                n_m = int(len(A[0])*0.2)
+                # p = np.random.randint(1, 246 - 1)
+                # n = np.random.randint(1, n_m + 1)
+                A_mean = torch.mean(A)
+                Pos = torch.zeros_like(A)
+
+                n = random.sample(range(len(A[0])), n_m)
+
+                A[:, n] = 0
+                A[:, :, n] = 0
+                
+                Pos[:, n] = 1
+                Pos[:, :, n] = 1
+            else:
+                Pos = torch.zeros_like(A)
+        else:
+            Pos = torch.zeros_like(A)
+
+        return A, B, Pos
 
 class pad:
     def __init__(self):
-        self.padding = transforms.Pad(5, padding_mode='reflect')
+        self.padding = transforms.Pad(5, padding_mode='symmetric')
 
     def __call__(self, img):
         if len(img[0]) < 256:

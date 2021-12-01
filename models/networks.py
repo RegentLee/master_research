@@ -6,7 +6,6 @@ from torch.optim import lr_scheduler
 
 from torch.nn.utils import spectral_norm
 
-
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -208,7 +207,7 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
 ##############################################################################
 # Classes
 ##############################################################################
-
+'''
 class GANLoss(nn.Module):
     """Define different GAN objectives.
 
@@ -257,23 +256,6 @@ class GANLoss(nn.Module):
             target_tensor = self.fake_label
         return target_tensor.expand_as(prediction)
 
-    def get_target_tensor_D(self, prediction, target_is_real):
-        """Create label tensors with the same size as the input.
-
-        Parameters:
-            prediction (tensor) - - tpyically the prediction from a discriminator
-            target_is_real (bool) - - if the ground truth label is for real images or fake images
-
-        Returns:
-            A label tensor filled with ground truth label, and with the size of the input
-        """
-
-        if target_is_real:
-            return 1 - 0.1*torch.rand_like(prediction)
-        else:
-            return 0.1*torch.rand_like(prediction)
-        return target_tensor.expand_as(prediction)
-
     def __call__(self, prediction, target_is_real, isG=False):
         """Calculate loss given Discriminator's output and grount truth labels.
 
@@ -290,6 +272,8 @@ class GANLoss(nn.Module):
             # else:
             #     target_tensor = self.get_target_tensor_D(prediction, target_is_real)
             target_tensor = self.get_target_tensor(prediction, target_is_real)
+            # if not isG:
+            #     target_tensor = target_tensor*0.9
             loss = self.loss(prediction, target_tensor)
         elif self.gan_mode == 'wgangp':
             if target_is_real:
@@ -297,57 +281,87 @@ class GANLoss(nn.Module):
             else:
                 loss = prediction.mean()
         return loss
-
 '''
+
 class GANLoss(nn.Module):
     def __init__(self, gan_mode, target_real_label=1.0, target_fake_label=0.0,
                  tensor=torch.FloatTensor, opt=None):
         super(GANLoss, self).__init__()
-        self.real_label = target_real_label
-        self.fake_label = target_fake_label
-        self.real_label_tensor = None
-        self.fake_label_tensor = None
-        self.zero_tensor = None
+        # self.real_label = target_real_label
+        # self.fake_label = target_fake_label
+        # self.real_label_tensor = None
+        # self.fake_label_tensor = None
+        # self.zero_tensor = None
+        self.register_buffer('real_label', torch.tensor(target_real_label))
+        self.register_buffer('fake_label', torch.tensor(target_fake_label))
+        self.register_buffer('zero_label', torch.tensor(0.0))
+        # self.zero_label = 0.0
         self.Tensor = tensor
         self.gan_mode = gan_mode
         self.opt = opt
-        if gan_mode == 'ls':
-            pass
-        elif gan_mode == 'original':
-            pass
-        elif gan_mode == 'w':
+        if gan_mode == 'lsgan':
+            self.loss_func = nn.MSELoss()
+        elif gan_mode == 'vanilla':
+            self.loss_func = nn.BCEWithLogitsLoss()
+        elif gan_mode == 'wgangp':
             pass
         elif gan_mode == 'hinge':
             pass
         else:
             raise ValueError('Unexpected gan_mode {}'.format(gan_mode))
 
+    """
     def get_target_tensor(self, input, target_is_real):
         if target_is_real:
             if self.real_label_tensor is None:
-                self.real_label_tensor = self.Tensor(1).fill_(self.real_label)
+                self.real_label_tensor = self.Tensor(1).fill_(self.real_label).cuda()
                 self.real_label_tensor.requires_grad_(False)
             return self.real_label_tensor.expand_as(input)
         else:
             if self.fake_label_tensor is None:
-                self.fake_label_tensor = self.Tensor(1).fill_(self.fake_label)
+                self.fake_label_tensor = self.Tensor(1).fill_(self.fake_label).cuda()
                 self.fake_label_tensor.requires_grad_(False)
-            return self.fake_label_tensor.expand_as(input)
+            return self.fake_label_tensor.expand_as(input)"""
+
+    def get_target_tensor(self, input, target_is_real):
+        """Create label tensors with the same size as the input.
+
+        Parameters:
+            prediction (tensor) - - tpyically the prediction from a discriminator
+            target_is_real (bool) - - if the ground truth label is for real images or fake images
+
+        Returns:
+            A label tensor filled with ground truth label, and with the size of the input
+        """
+
+        if target_is_real:
+            target_tensor = self.real_label
+        else:
+            target_tensor = self.fake_label
+        return target_tensor.expand_as(input)
 
     def get_zero_tensor(self, input):
-        if self.zero_tensor is None:
-            self.zero_tensor = self.Tensor(1).fill_(0).cuda()
-            self.zero_tensor.requires_grad_(False)
-        return self.zero_tensor.expand_as(input)
+        # if self.zero_tensor is None:
+        #     self.zero_tensor = self.Tensor(1).fill_(0).cuda()
+        #     self.zero_tensor.requires_grad_(False)
+        return self.zero_label.expand_as(input)
 
     def loss(self, input, target_is_real, for_discriminator=True):
-        if self.gan_mode == 'original':  # cross entropy loss
+        '''if self.gan_mode == 'vanilla':  # cross entropy loss
             target_tensor = self.get_target_tensor(input, target_is_real)
+            if not for_discriminator:
+                target_tensor = 0.9*target_tensor
             loss = F.binary_cross_entropy_with_logits(input, target_tensor)
             return loss
-        elif self.gan_mode == 'ls':
+        elif self.gan_mode == 'lsgan':
             target_tensor = self.get_target_tensor(input, target_is_real)
-            return F.mse_loss(input, target_tensor)
+            return F.mse_loss(input, target_tensor)'''
+        if self.gan_mode in ['lsgan', 'vanilla']:
+            target_tensor = self.get_target_tensor(input, target_is_real)
+            # if not isG:
+            #     target_tensor = target_tensor*0.9
+            loss = self.loss_func(input, target_tensor)
+            return loss
         elif self.gan_mode == 'hinge':
             if for_discriminator:
                 if target_is_real:
@@ -383,30 +397,7 @@ class GANLoss(nn.Module):
         else:
             return self.loss(input, target_is_real, for_discriminator)
 
-
-# Perceptual loss that uses a pretrained VGG network
-class VGGLoss(nn.Module):
-    def __init__(self, gpu_ids):
-        super(VGGLoss, self).__init__()
-        self.vgg = VGG19().cuda()
-        self.criterion = nn.L1Loss()
-        self.weights = [1.0 / 32, 1.0 / 16, 1.0 / 8, 1.0 / 4, 1.0]
-
-    def forward(self, x, y):
-        x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-        loss = 0
-        for i in range(len(x_vgg)):
-            loss += self.weights[i] * self.criterion(x_vgg[i], y_vgg[i].detach())
-        return loss
-
-
-# KL Divergence loss used in VAE with an image encoder
-class KLDLoss(nn.Module):
-    def forward(self, mu, logvar):
-        return -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-'''
-
-def cal_gradient_penalty(netD, real_data, fake_data, device, type='mixed', constant=1.0, lambda_gp=10.0):
+def cal_gradient_penalty(netD, real_data, fake_data, device, idx, type='mixed', constant=1.0, lambda_gp=10.0):
     """Calculate the gradient penalty loss, used in WGAN-GP paper https://arxiv.org/abs/1704.00028
 
     Arguments:
@@ -432,7 +423,7 @@ def cal_gradient_penalty(netD, real_data, fake_data, device, type='mixed', const
         else:
             raise NotImplementedError('{} not implemented'.format(type))
         interpolatesv.requires_grad_(True)
-        disc_interpolates = netD(interpolatesv)
+        disc_interpolates = netD(interpolatesv, idx)
         gradients = torch.autograd.grad(outputs=disc_interpolates, inputs=interpolatesv,
                                         grad_outputs=torch.ones(disc_interpolates.size()).to(device),
                                         create_graph=True, retain_graph=True, only_inputs=True)

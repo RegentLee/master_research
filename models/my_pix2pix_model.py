@@ -32,6 +32,8 @@ from torchinfo import summary
 
 from torch.nn.utils import spectral_norm
 
+import numpy as np
+
 
 class MyPix2PixModel(BaseModel):
     """ This class implements the pix2pix model, for learning a mapping from input images to output images given paired data.
@@ -60,6 +62,7 @@ class MyPix2PixModel(BaseModel):
         """
         # changing the default values to match the pix2pix paper (https://phillipi.github.io/pix2pix/)
         parser.set_defaults(norm='batch', dataset_mode='master_pix2pix')
+        parser.set_defaults(input_nc=2, output_nc=1)  # specify dataset-specific default values
         if is_train:
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
             parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
@@ -74,9 +77,9 @@ class MyPix2PixModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN', 'DP']# 'D_real', 'D_fake']
+        self.loss_names = ['G_GAN', 'DP', 'D_real', 'D_fake']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
-        self.visual_names = ['real_A', 'fake_B', 'real_B']
+        self.visual_names = ['a', 'fake_B', 'b', 'real_B']
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
         if self.isTrain:
             self.model_names = ['G', 'D', 'Pixel']
@@ -89,10 +92,10 @@ class MyPix2PixModel(BaseModel):
         # self.net = MyUNetGenerator(opt.input_nc, opt.output_nc, opt.ngf, 
         #                         norm_layer=networks.get_norm_layer(norm_type=opt.norm), 
         #                         use_dropout=(not opt.no_dropout))
-        self.net = EnDeCoder(opt.input_nc, opt.output_nc)
+        self.net = Generator(opt.input_nc, opt.output_nc)
         # self.net = networks.UnetGenerator(opt.input_nc, opt.output_nc, 6, opt.ngf, norm_layer=networks.get_norm_layer(norm_type=opt.norm), use_dropout=(not opt.no_dropout))
         self.netG = networks.init_net(self.net, opt.init_type, opt.init_gain, self.gpu_ids)
-        summary(self.net, input_data=[torch.zeros([1, 1, 64, 64])], depth=15) #, torch.zeros(1, dtype=torch.long)
+        summary(self.net, input_data=[torch.zeros([1, 2, 240, 240]), torch.zeros([1, 2])], depth=15) #, torch.zeros(1, dtype=torch.long)
 
         if self.isTrain:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
             # self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
@@ -100,22 +103,23 @@ class MyPix2PixModel(BaseModel):
             # netD = networks.PixelDiscriminator(opt.output_nc, opt.ndf, norm_layer=networks.get_norm_layer(norm_type=opt.norm))
             netD = MyPixelDiscriminator(opt.input_nc + opt.output_nc, nn.Identity)
             self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
-            netPixel = MyPixelDiscriminator(opt.output_nc)
+            netPixel = MyPixelDiscriminator(opt.output_nc, nn.Identity)
             self.netPixel = networks.init_net(netPixel, opt.init_type, opt.init_gain, self.gpu_ids)
-            summary(self.netD, input_size=(1, 2, 64, 64), depth=10)
-            summary(self.netPixel, input_size=(1, 1, 64, 64), depth=10)
+            summary(self.netD, input_data=[torch.zeros([1, 3, 263, 263]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
+            summary(self.netPixel, input_data=[torch.zeros([1, 1, 240, 240]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
 
         if self.isTrain:
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
             self.criterionCE = torch.nn.CrossEntropyLoss()
-            self.criterionL2 = torch.nn.L1Loss()
+            self.criterionL1 = torch.nn.L1Loss()
+            self.criterionL2 = torch.nn.MSELoss()
             self.criterionAB = torch.nn.BCEWithLogitsLoss()
-            # self.criterionTri = nn.TripletMarginLoss(margin=50, p=1.0) # torch.nn.MSELoss()# torch.nn.L1Loss()
+            self.criterionTri = nn.TripletMarginLoss(margin=1, p=1.0) # torch.nn.MSELoss()# torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_Pixel = torch.optim.Adam(self.netPixel.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr*4, betas=(opt.beta1, 0.999))
+            self.optimizer_Pixel = torch.optim.Adam(self.netPixel.parameters(), lr=opt.lr*4, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
             self.optimizers.append(self.optimizer_Pixel)
@@ -131,6 +135,10 @@ class MyPix2PixModel(BaseModel):
             self.real_pool_G = my_util.ImagePool(pool)
             self.fake_pool_G = my_util.ImagePool(pool)
 
+            # DA
+            self.rotate = Rotate()
+            self.cutout = Cutout()
+
     def set_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
 
@@ -140,12 +148,18 @@ class MyPix2PixModel(BaseModel):
         The option 'direction' can be used to swap images in domain A and domain B.
         """
         AtoB = self.opt.direction == 'AtoB'
-        self.real_A = input['A' if AtoB else 'B'].to(self.device)
+        self.real_A = input['A' if AtoB else 'B'] # .to(self.device)
+        self.a = self.real_A
+        self.Pos = input['Pos']
+        self.real_A = torch.cat([self.real_A, self.Pos], dim=1).to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         # self.real_B = self._shortcut(self.idt_B)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
         self.idx = input['idx'].to(self.device)
-        self.a = self._shortcut(self.real_A)
+        self.a = self._shortcut(self.a)
+        
+        self.domain = input['domain'].to(self.device)
+        self.domain = self._to_onehot(self.domain)
 
     def _shortcut(self, x):
         x = (x + 1)*my_util.distance[-1]
@@ -155,31 +169,50 @@ class MyPix2PixModel(BaseModel):
         x = (x - m_min)/(m_max - m_min)*2 - 1
         return x
 
+    def _to_onehot(self, idx):
+        onehot = []
+        for i in range(len(idx)):
+            if idx[i] == 0:
+                onehot.append([1, 0])
+            elif idx[i] == 1:
+                onehot.append([0, 1])
+        onehot = torch.tensor(onehot)
+        return onehot
+
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.fake_B = self.netG(self.real_A)  # G(A)
+        self.fake_B = self.netG(self.real_A, self.domain)  # G(A)
+        x = self.fake_B
+        x = (x + 1)*my_util.distance[-1]//2
+        b = (self.real_B + 1)*my_util.distance[-1]//2
+        # m_max = torch.tensor(my_util.distance[-1], dtype=torch.float, device=x.device)
+        # m_min = torch.tensor(0, dtype=torch.float, device=x.device)
+        x = x - b
+        m_max = torch.max(x)
+        m_min = torch.min(x)
+        self.b = (x - m_min)/(m_max - m_min)*2 - 1
 
     def backward_D(self):
+        # real_A, fake_B, real_B = self.rotate(self.real_A.clone(), self.fake_B.detach().clone(), self.real_B.clone())
+        # real_A, fake_B, real_B = self.cutout(self.real_A.clone(), self.fake_B.detach().clone(), self.real_B.clone())
         """Calculate GAN loss for the discriminator"""
-        
         # Fake; stop backprop to the generator by detaching fake_B
         fake_AB = torch.cat((self.real_A, self.fake_B.detach()), 1)  # we use conditional GANs; we need to feed both input and output to the discriminator
-        # fake_AB = self.fake_B.detach() - self.real_A
-        # fake_AB = torch.cat((self.real_A, fake_AB), 1) 
-        pred_fake = self.netD(fake_AB.detach())
+        # fake_AB = self.fake_B.detach()
+        pred_fake = self.netD(fake_AB.detach(), self.idx)
         # fake1, fake2, fake3, fake4, fake = self.netD(fake_AB.detach())
         self.loss_D_fake = self.criterionGAN(pred_fake, False)
         # self.loss_D_fake = self.criterionGAN(pred_fake, False) + self.criterionGAN(fake_all, False)
         # Real
         real_AB = torch.cat((self.real_A, self.real_B), 1)
-        # real_AB = self.real_B - self.real_A
+        # real_AB = self.real_B
         # real_AB = torch.cat((self.real_A, real_AB), 1)
-        pred_real = self.netD(real_AB)
+        pred_real = self.netD(real_AB, self.idx)
         # real1, real2, real3, real4, real = self.netD(real_AB)
         self.loss_D_real = self.criterionGAN(pred_real, True)
         # self.loss_D_real = self.criterionGAN(pred_real, True) + self.criterionGAN(real_all, True)
 
-        # gp, _ = networks.cal_gradient_penalty(self.netD, real_AB, fake_AB, self.device)
+        # gp, _ = networks.cal_gradient_penalty(self.netD, real_AB, fake_AB, self.device, self.idx)
         '''
         """Citation:
         Jolicoeur-Martineau, Alexia. 
@@ -198,6 +231,21 @@ class MyPix2PixModel(BaseModel):
         # combine loss and calculate gradients
         self.loss_D = self.loss_D_fake + self.loss_D_real#  + gp
 
+        if self.opt.gan_mode == 'wgangp':
+            gp, _ = networks.cal_gradient_penalty(self.netD, real_AB, fake_AB, self.device, self.idx)
+            self.loss_D += gp
+
+        '''
+        fake_AB_r = torch.rot90(fake_AB, 2, [2, 3])
+        pred_fake_r = self.netD(fake_AB_r.detach(), self.idx)
+        pred_fake_r = torch.rot90(pred_fake_r, 2, [2, 3])
+        self.loss_D += 10*self.criterionL2(pred_fake, pred_fake_r)
+        # Real
+        real_AB_r = torch.rot90(real_AB, 2, [2, 3])
+        pred_real_r = self.netD(real_AB_r, self.idx)
+        pred_real_r = torch.rot90(pred_real_r, 2, [2, 3])
+        self.loss_D += 10*self.criterionL2(pred_real, pred_real_r)
+        '''
         # self.loss_D_fake = self.criterionGAN(fake_all - real_all, False)
         # self.loss_D_real = self.criterionGAN(real_all - fake_all, True)
         # self.loss_D += (self.loss_D_fake + self.loss_D_real) * 0.5
@@ -241,18 +289,20 @@ class MyPix2PixModel(BaseModel):
         
         # Fake; stop backprop to the generator by detaching fake_B
         fake_B = self.fake_B.detach()
-        pred_fake = self.netPixel(fake_B)
-        # self.loss_pixel_fake = self.criterionGAN(pred_fake, False)
+        pred_fake = self.netPixel(fake_B, self.idx)
+        self.loss_pixel_fake = self.criterionGAN(pred_fake, False)
         # Real
         real_B = self.real_B
-        pred_real = self.netPixel(real_B)
-        # self.loss_pixel_real = self.criterionGAN(pred_real, True)
+        pred_real = self.netPixel(real_B, self.idx)
+        self.loss_pixel_real = self.criterionGAN(pred_real, True)
+
+        # gp, _ = networks.cal_gradient_penalty(self.netPixel, real_B, fake_B, self.device, self.idx)
 
         # Fake
-        self.loss_pixel_fake = self.criterionGAN(pred_fake - pred_real.detach(), False)
+        # self.loss_pixel_fake = self.criterionGAN(pred_fake - pred_real.detach(), False)
 
         # Real
-        self.loss_pixel_real = self.criterionGAN(pred_real - pred_fake.detach(), True)
+        # self.loss_pixel_real = self.criterionGAN(pred_real - pred_fake.detach(), True)
         '''
         """Citation:
         Jolicoeur-Martineau, Alexia. 
@@ -262,7 +312,10 @@ class MyPix2PixModel(BaseModel):
         '''
         # self.loss_pixel_fake = self.criterionGAN(pred_fake - pred_real, False)
         # elf.loss_pixel_real = self.criterionGAN(pred_real - pred_fake, True)
-        self.loss_pixel = (self.loss_pixel_fake + self.loss_pixel_real) * 0.5
+        self.loss_pixel = self.loss_pixel_fake + self.loss_pixel_real#  + gp
+        if self.opt.gan_mode == 'wgangp':
+            gp, _ = networks.cal_gradient_penalty(self.netPixel, real_B, fake_B, self.device, self.idx)
+            self.loss_pixel += gp
 
         # self.loss_pixel += (self.criterionCE(ce_fake, self.idx) + self.criterionCE(ce_real, self.idx)) * 0.5
 
@@ -299,12 +352,11 @@ class MyPix2PixModel(BaseModel):
 
     def backward_G(self):
         """Calculate GAN and L1 loss for the generator"""
-        
         # First, G(A) should fake the discriminator
         fake_AB = torch.cat((self.real_A, self.fake_B), 1)
-        # fake_AB = self.fake_B - self.real_A
+        # fake_AB = self.fake_B
         # fake_AB = torch.cat((self.real_A, fake_AB), 1)
-        pred_fake = self.netD(fake_AB)
+        pred_fake = self.netD(fake_AB, self.idx)
         # fake1, fake2, fake3, fake4, fake = self.netD(fake_AB)
         # Real
         ## real_AB = torch.cat((self.real_A, self.real_B), 1)
@@ -312,7 +364,7 @@ class MyPix2PixModel(BaseModel):
         # real_AB = torch.cat((self.real_A, real_AB), 1)
         # real1, real2, real3, real4, real = self.netD(real_AB)
         ## pred_real = self.netD(real_AB)
-        self.loss_G_GAN = self.criterionGAN(pred_fake, True)
+        self.loss_G_GAN = self.criterionGAN(pred_fake, True, for_discriminator=False)
         # self.loss_G_GAN = self.criterionGAN(pred_fake, True) + self.criterionGAN(fake_all, True)
         ## self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True, True)
         ## self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False, True)
@@ -323,8 +375,10 @@ class MyPix2PixModel(BaseModel):
         '''
         # Fake
         fake_B = self.fake_B
-        pred_fake = self.netPixel(fake_B)
-        # self.loss_G_GAN += self.criterionGAN(pred_fake, True)
+        pred_fake = self.netPixel(fake_B, self.idx)
+        self.loss_G_GAN += self.criterionGAN(pred_fake, True, for_discriminator=False)
+        '''
+        '''
         # Real
         real_B = self.real_B
         pred_real = self.netPixel(real_B)
@@ -350,7 +404,8 @@ class MyPix2PixModel(BaseModel):
         A = torch.where(A > m_max, m_max, A)
         A = ((A - m_min)/(m_max - m_min)*2 - 1).to(torch.float)"""
         
-        self.loss_G_L1 = self.criterionL2(self.fake_B, self.real_B)
+        self.loss_G_L1 = self.criterionL1(self.fake_B, self.real_B)
+        # self.loss_G_L1 = self.criterionTri(self.fake_B, self.real_B, self.a)
         # real_AB = torch.cat((self.real_A, self.real_B), 1)
         # pred_real = self.netD(real_AB)
         # self.loss_G_L1 = self.criterionTri(self.fake_B, self.real_B, self.real_A)
@@ -361,6 +416,10 @@ class MyPix2PixModel(BaseModel):
         # self.loss_G_L1 += self.criterionTri(self.fake_B, self.real_B)
         # combine loss and calculate gradients
         self.loss_G = self.loss_G_GAN + self.loss_G_L1
+
+        # self.idt_B = self.netG(self.real_B)
+        # self.loss_idt = self.criterionL2(self.idt_B, self.real_B) * 5
+        # self.loss_G += self.loss_idt
 
         # self.loss_G += (self.criterionCE(ce_fake, self.idx) + self.criterionCE(ce_real, self.idx)) * 0.5
 
@@ -438,16 +497,55 @@ class MyPix2PixModel(BaseModel):
             self.optimizer_Pixel.step()          # update Pixel's weights
         '''
         # update G
-        for _ in range(1):
+        for i in range(1):
             self.set_requires_grad(self.netD, False)  # D requires no gradients when optimizing G
-            # self.set_requires_grad(self.netPixel, False) 
+            self.set_requires_grad(self.netPixel, False) 
             self.optimizer_G.zero_grad()        # set G's gradients to zero
             self.backward_G()                   # calculate graidents for G
             self.optimizer_G.step()             # udpate G's weights
+            # if i == 0:
+            #     self.forward()   
 
         # print("Model's state_dict:")
         # print(self.net.state_dict()["linear.weight"])
         # print(self.net.state_dict()["linear.bias"])
+
+class Rotate:
+    def __init__(self, p=0.5) -> None:
+        self.prob = p
+
+    def __call__(self, real_A, fake_B, real_B):
+        p = np.random.rand()
+        if p < self.prob:
+            real_A = torch.rot90(real_A, 2, [2, 3])
+            fake_B = torch.rot90(fake_B, 2, [2, 3])
+            real_B = torch.rot90(real_B, 2, [2, 3])
+        return real_A, fake_B, real_B
+
+class Cutout:
+    def __init__(self, p=0.5, cutout_range=10) -> None:
+        self.prob = p
+        self.cr = cutout_range
+
+    def __call__(self, real_A, fake_B, real_B):
+        p = np.random.rand()
+        if p < self.prob:
+            n = np.random.randint(0, self.cr + 1)
+
+            for _ in range(n):
+                len_A = len(real_A[0][0])
+                c = np.random.randint(1, len_A - 1)
+
+                real_A[:, :, c] = 0
+                real_A[:, :, :, c] = 0
+
+                fake_B[:, :, c] = 0
+                fake_B[:, :, :, c] = 0
+
+                real_B[:, :, c] = 0
+                real_B[:, :, :, c] = 0
+
+        return real_A, fake_B, real_B
 
 class MyUNetGenerator(nn.Module):
     """Create a Unet-based generator"""
@@ -557,9 +655,9 @@ class MyUNetD(nn.Module):
         """
         super(MyUNetD, self).__init__()
 
-        model = [UNetD(input_nc, 1, True)]
+        # model = [UNetD(input_nc, 1, True)]
         
-        self.model = nn.Sequential(*model)
+        # self.model = nn.Sequential(*model)
 
     def forward(self, input):
         """Standard forward"""
@@ -1122,27 +1220,25 @@ class MyPixelDiscriminator(nn.Module):
         ndf = 64
         
         self.model = nn.Sequential(
-            nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=1), #(1, 256, 256) -> (64, 128, 128) # (1, 64, 64) -> (64, 32, 32)
+            spectral_norm(nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=1)), #(1, 256, 256) -> (64, 128, 128) # (1, 64, 64) -> (64, 32, 32)
             nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ndf, ndf*2, kernel_size=4, stride=2, padding=1), #(64, 128, 128) -> (128, 64, 64) # (64, 32, 32) -> (128, 16, 16)
+            spectral_norm(nn.Conv2d(ndf, ndf*2, kernel_size=4, stride=2, padding=1)), #(64, 128, 128) -> (128, 64, 64) # (64, 32, 32) -> (128, 16, 16)
             norm_layer(ndf*2, affine=True),
             nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ndf*2, ndf*4, kernel_size=4, stride=2, padding=1), #(128, 64, 64) -> (256, 32, 32) # (128, 16, 16) -> (256, 8, 8)
+            spectral_norm(nn.Conv2d(ndf*2, ndf*4, kernel_size=4, stride=2, padding=1)), #(128, 64, 64) -> (256, 32, 32) # (128, 16, 16) -> (256, 8, 8)
             norm_layer(ndf*4, affine=True),
             nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ndf*4, ndf*8, kernel_size=4, stride=2, padding=1), #(256, 32, 32) -> (512, 16, 16) # (256, 8, 8) -> (512, 4, 4)
+            spectral_norm(nn.Conv2d(ndf*4, ndf*8, kernel_size=4, stride=2, padding=1)), #(256, 32, 32) -> (512, 16, 16) # (256, 8, 8) -> (512, 4, 4)
             norm_layer(ndf*8, affine=True),
             nn.LeakyReLU(0.2, True),
-            # nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (1, 1, 1)
-            nn.Conv2d(ndf*8, ndf*8, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (512, 1, 1)
-            nn.Flatten(),
+            nn.Conv2d(ndf*8, 1, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (1, 1, 1)
+            # nn.Conv2d(ndf*8, 8, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (512, 1, 1)
             # nn.LayerNorm(ndf*8),
-            nn.LeakyReLU(0.2, True),
+            # nn.LeakyReLU(0.2, True),
+            # nn.Conv2d(ndf*8, 8, kernel_size=1)
         )
 
-        self.tf = nn.Linear(512, 1)
-        self.ab = nn.Linear(512, 1)
-        '''
+        """
             nn.Conv2d(ndf*8, ndf*16, kernel_size=4, stride=2, padding=1), #(512, 16, 16) -> (1024, 8, 8) # (512, 4, 4) -> (1, 1, 1)
             norm_layer(ndf*16),
             nn.LeakyReLU(0.2, True),
@@ -1150,15 +1246,15 @@ class MyPixelDiscriminator(nn.Module):
             norm_layer(ndf*32),
             nn.LeakyReLU(0.2, True),
             nn.Conv2d(ndf*32, 1, kernel_size=3, stride=3, padding=0) #(2048, 4, 4) -> (1, 1, 1)   
-        )'''
+        )"""
 
-    def forward(self, x):
+    def forward(self, x, y):
         # return self.model(x).view(-1, 1)
-        x = self.model(x)
-        tf = self.tf(x)
-        ab = self.ab(x)
-
-        return tf
+        out = self.model(x)
+        # out = out.view(out.size(0), -1)  # (batch, num_domains)
+        # idx = torch.LongTensor(range(y.size(0))).to(y.device)
+        # out = out[idx, y]  # (batch)
+        return out
 
 class LNorm(nn.Module):
     def __init__(self, dim):
@@ -1173,13 +1269,94 @@ class ResidualBlock(nn.Module):
     """Residual Block with instance normalization."""
     def __init__(self, dim_in, dim_out):
         super(ResidualBlock, self).__init__()
-        instance = False
+        affine = True
+        instance = True
+        self.main = nn.Sequential(
+            spectral_norm(nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=1, padding=1, bias=False)),
+            nn.InstanceNorm2d(dim_out, affine=affine, track_running_stats=instance),
+            nn.ReLU(inplace=True),
+            spectral_norm(nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False)),
+            nn.InstanceNorm2d(dim_out, affine=affine, track_running_stats=instance),
+            # Shrinkage(dim_out)
+        )
+        self.relu = nn.ReLU(True)
+
+    def forward(self, x):
+        x = x + self.main(x)
+        return x
+
+class ResidualDown(nn.Module):
+    """Residual Block with instance normalization."""
+    def __init__(self, dim_in, dim_out):
+        super(ResidualDown, self).__init__()
+        norm_layer = nn.BatchNorm2d
+        '''
+        self.main = nn.Sequential(
+            nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=2, padding=1, bias=False),
+            norm_layer(dim_out),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
+            norm_layer(dim_out))
+        self.shortcut = nn.Conv2d(dim_in, dim_out, kernel_size=1, stride=2)
+        self.out = nn.LeakyReLU(0.2, True)
+        '''
         self.main = nn.Sequential(
             nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.InstanceNorm2d(dim_out, affine=instance, track_running_stats=instance),
+            nn.BatchNorm2d(dim_out),
             nn.ReLU(inplace=True),
             nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.InstanceNorm2d(dim_out, affine=instance, track_running_stats=instance))
+            nn.BatchNorm2d(dim_out))
+
+    def forward(self, x):
+        x = x + self.main(x)
+        return x
+'''
+class MyPixelDiscriminator(nn.Module):
+    def __init__(self, input_nc, norm_layer=nn.BatchNorm2d):
+        super(MyPixelDiscriminator, self).__init__()
+
+        ndf = 64
+        
+        self.model = nn.Sequential(
+            nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=1), # (1, 64, 64) -> (64, 32, 32)
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ndf, ndf*2, kernel_size=4, stride=2, padding=1), # (64, 32, 32) -> (128, 16, 16)
+            norm_layer(ndf*2, affine=True),
+            nn.LeakyReLU(0.2, True),
+            ResidualDown(ndf*2, ndf*2),
+            nn.LeakyReLU(0.2, True),
+            ResidualDown(ndf*2, ndf*2),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ndf*2, ndf*4, kernel_size=4, stride=2, padding=1), # (128, 16, 16) -> (256, 8, 8)
+            norm_layer(ndf*4, affine=True),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ndf*4, ndf*8, kernel_size=4, stride=2, padding=1), # (256, 8, 8) -> (512, 4, 4)
+            norm_layer(ndf*8, affine=True),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ndf*8, ndf*8, kernel_size=4, stride=4, padding=0), # (512, 4, 4) -> (512, 1, 1)
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ndf*8, 1, kernel_size=1)
+        )
+
+    def forward(self, x):
+        return self.model(x).view(-1, 1)
+'''
+
+class ResGroupBlock(nn.Module):
+    """Residual Block with instance normalization."""
+    def __init__(self, dim_in, dim_out):
+        super(ResGroupBlock, self).__init__()
+        affine = False
+        instance = False
+        self.main = nn.Sequential(
+            nn.Conv2d(dim_in, dim_out*2, kernel_size=1),
+            nn.InstanceNorm2d(dim_out, affine=affine, track_running_stats=instance),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim_out*2, dim_out*2, kernel_size=3, padding=1, groups=dim_out//32),
+            nn.InstanceNorm2d(dim_out*2, affine=affine, track_running_stats=instance),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim_out*2, dim_out, kernel_size=1),
+            nn.InstanceNorm2d(dim_out, affine=affine, track_running_stats=instance))
 
     def forward(self, x):
         return x + self.main(x)
@@ -1187,67 +1364,94 @@ class ResidualBlock(nn.Module):
 
 class Generator(nn.Module):
     """Generator network."""
-    def __init__(self, input_nc, output_nc, conv_dim=64, repeat_num=6):
+    def __init__(self, input_nc, output_nc, conv_dim=64, repeat_num=9):
         super(Generator, self).__init__()
 
-        instance = False
+        affine = True
+        instance = True
         layers = []
-        layers.append(nn.Conv2d(input_nc, conv_dim, kernel_size=7, stride=1, padding=3, bias=False))
-        layers.append(nn.InstanceNorm2d(conv_dim, affine=instance, track_running_stats=instance))
+        layers.append(spectral_norm(nn.Conv2d(input_nc, conv_dim, kernel_size=7, stride=1, padding=3, bias=False)))
+        layers.append(nn.InstanceNorm2d(conv_dim, affine=affine, track_running_stats=instance))
         layers.append(nn.ReLU(inplace=True))
 
         # Down-sampling layers.
         curr_dim = conv_dim
-        for i in range(2):
-            layers.append(nn.Conv2d(curr_dim, curr_dim*2, kernel_size=4, stride=2, padding=1, bias=False))
-            layers.append(nn.InstanceNorm2d(curr_dim*2, affine=instance, track_running_stats=instance))
+        for i in range(1):
+            layers.append(spectral_norm(nn.Conv2d(curr_dim, curr_dim*2, kernel_size=4, stride=2, padding=1, bias=False)))
+            layers.append(nn.InstanceNorm2d(curr_dim*2, affine=affine, track_running_stats=instance))
             layers.append(nn.ReLU(inplace=True))
             curr_dim = curr_dim * 2
+        self.down = nn.Sequential(*layers)
 
+        layers = []
+        for i in range(1):
+            layers.append(spectral_norm(nn.Conv2d(curr_dim, curr_dim*2, kernel_size=4, stride=2, padding=1, bias=False)))
+            layers.append(nn.InstanceNorm2d(curr_dim*2, affine=affine, track_running_stats=instance))
+            layers.append(nn.ReLU(inplace=True))
+            curr_dim = curr_dim * 2
+        
         # Bottleneck layers.
-        for i in range(repeat_num//2):
-            layers.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
-
-        instance = True
-        for i in range(repeat_num//2):
-            layers.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
+        for i in range(repeat_num):
+            '''layers.append(Dense(curr_dim, curr_dim*2))
+            layers.append(spectral_norm(nn.Conv2d(curr_dim*2, curr_dim, kernel_size=1, bias=False)))
+            layers.append(nn.InstanceNorm2d(curr_dim, affine=affine, track_running_stats=instance))
+            layers.append(nn.ReLU(inplace=True))'''
+            layers.append(ResidualBlock(curr_dim, curr_dim))
+            # layers.append(Self_Attn(curr_dim))
 
         # Up-sampling layers.
-        for i in range(2):
-            layers.append(nn.ConvTranspose2d(curr_dim, curr_dim//2, kernel_size=4, stride=2, padding=1, bias=False))
-            layers.append(nn.InstanceNorm2d(curr_dim//2, affine=instance, track_running_stats=instance))
+        for i in range(1):
+            layers.append(spectral_norm(nn.ConvTranspose2d(curr_dim, curr_dim//2, kernel_size=4, stride=2, padding=1, bias=False)))
+            layers.append(nn.InstanceNorm2d(curr_dim//2, affine=affine, track_running_stats=instance))
+            # layers.append(nn.Conv2d(in_channels=curr_dim, out_channels=curr_dim//2*4, kernel_size=3, stride=1, padding=1, bias=False))
+            # layers.append(nn.PixelShuffle(2))
             layers.append(nn.ReLU(inplace=True))
             curr_dim = curr_dim // 2
-
-        layers.append(nn.Conv2d(curr_dim, output_nc, kernel_size=7, stride=1, padding=3, bias=False))
-        layers.append(nn.Tanh())
+        
         self.main = nn.Sequential(*layers)
 
-    def forward(self, x):
+        layers = []
+        for i in range(1):
+            layers.append(spectral_norm(nn.ConvTranspose2d(curr_dim, curr_dim//2, kernel_size=4, stride=2, padding=1, bias=False)))
+            layers.append(nn.InstanceNorm2d(curr_dim//2, affine=affine, track_running_stats=instance))
+            # layers.append(nn.Conv2d(in_channels=curr_dim, out_channels=curr_dim//2*4, kernel_size=3, stride=1, padding=1, bias=False))
+            # layers.append(nn.PixelShuffle(2))
+            layers.append(nn.ReLU(inplace=True))
+            curr_dim = curr_dim // 2
+        self.up = nn.Sequential(*layers)
+        
+        layers = []
+        layers.append(nn.Conv2d(curr_dim, output_nc, kernel_size=7, stride=1, padding=3, bias=False))
+        layers.append(nn.Tanh())
+        self.out = nn.Sequential(*layers)
+
+        # self.tanh = nn.Tanh()
+
+        self.pas = nn.MaxPool2d(2)
+
+    def forward(self, x, c):
         # Replicate spatially and concatenate domain information.
         # Note that this type of label conditioning does not work at all if we use reflection padding in Conv2d.
         # This is because instance normalization ignores the shifting (or bias) effect.
         # c = c.view(c.size(0), c.size(1), 1, 1)
         # c = c.repeat(1, 1, x.size(2), x.size(3))
         # x = torch.cat([x, c], dim=1)
-        return self.main(x)
+        # x0 = self._shortcut(x)
+        # x = torch.cat([x, x0], dim=1)
+        # x0 = self._shortcut(x)
+        x2 = self.down(x)
+        x1 = self.main(x2)
+        x1 = self._pad(x1, x2)
+        x1 = self.up(x1)
+        x1 = self._pad(x1, x)
+        x1 = self.out(x1)
 
+        # x = self.tanh(self._shortcut(x[:, 0]) + x1)
 
-class EnDeCoder(nn.Module):
-    def __init__(self, n_channels, n_classes):
-        super(EnDeCoder, self).__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
+        x_t = x1.transpose(2, 3)
+        x = (x1 + x_t)/2
 
-        self.encoder = Encoder(n_channels)
-        self.decoder = Decoder(n_classes)
-
-        self.tanh = nn.Tanh()
-        
-
-    def forward(self, x):
-        logits = self.decoder(self.encoder(x))
-        return self.tanh(logits + self._shortcut(x))
+        return x
 
     def _shortcut(self, x):
         x = (x + 1)*my_util.distance[-1]
@@ -1257,129 +1461,63 @@ class EnDeCoder(nn.Module):
         x = (x - m_min)/(m_max - m_min)*2 - 1
         return x
 
-class Encoder(nn.Module):
-    def __init__(self, n_channels):
-        super(Encoder, self).__init__()
-        
-        ngf = 64
-        self.inc = nn.Sequential(
-            nn.Conv2d(n_channels, ngf, kernel_size=1, bias=False), # (1, 64, 64) -> (64, 64, 64)
-            # nn.InstanceNorm2d(ngf),
-            # nn.LeakyReLU(0.2, True),
-        )
-        self.down1 = nn.Sequential(
-            nn.Conv2d(ngf, ngf*2, kernel_size=4, stride=2, padding=1), # (64, 64, 64) -> (128, 32, 32)
-            
-        )
-        self.down2 = nn.Sequential(
-            nn.InstanceNorm2d(ngf*2),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ngf*2, ngf*4, kernel_size=4, stride=2, padding=1), # (128, 32, 32) -> (256, 16, 16)
-            
-        )
-        self.down3 = nn.Sequential(
-            nn.InstanceNorm2d(ngf*4),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ngf*4, ngf*8, kernel_size=4, stride=2, padding=1), # (256, 16, 16) -> (512, 8, 8)
-            
-        )
-        self.down4 = nn.Sequential(
-            nn.InstanceNorm2d(ngf*8),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ngf*8, ngf*16, kernel_size=4, stride=2, padding=1), # (512, 8, 8) -> (1024, 4, 4)
-            
-        )
-        self.down5 = nn.Sequential(
-            nn.InstanceNorm2d(ngf*16),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ngf*16, ngf*32, kernel_size=4, stride=2, padding=1), # (1024, 4, 4) -> (2048, 2, 2)
-            
-        )
-        self.down6 = nn.Sequential(
-            nn.InstanceNorm2d(ngf*32),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ngf*32, ngf*64, kernel_size=4, stride=2, padding=1), # (2048, 2, 2) -> (4096, 1, 1)
-            nn.LeakyReLU(0.2, True),
-        )
+    def _pad(self, x1, x2):
+        assert len(x1[0][0]) <= len(x2[0][0])
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
 
-    def forward(self, x):
-        x0 = self.inc(x) # (1, 64, 64) -> (64, 64, 64)
-        x1 = self.down1(x0) # (64, 64, 64) -> (128, 32, 32)
-        x2 = self.down2(x1) # (128, 32, 32) -> (256, 16, 16)
-        x3 = self.down3(x2) # (256, 16, 16) -> (512, 8, 8)
-        x4 = self.down4(x3) # (512, 8, 8) -> (1024, 4, 4)
-        x5 = self.down5(x4) # (1024, 4, 4) -> (2048, 2, 2)
-        x6 = self.down6(x5) # (2048, 2, 2) -> (4096, 1, 1)
-        return x0, x1, x2, x3, x4, x5, x6
+        x1 = nn.functional.pad(x1, [diffX // 2, diffX - diffX // 2,
+                    diffY // 2, diffY - diffY // 2])
+        # if you have padding issues, see
+        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+        return x1
 
-class Decoder(nn.Module):
-    def __init__(self, n_classes):
-        super(Decoder, self).__init__()
-        
-        ngf = 64
-        self.outc = nn.Sequential(
-            nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ngf, n_classes, kernel_size=1, bias=True), # (1, 64, 64) <- (64, 64, 64)
-            # nn.InstanceNorm2d(ngf),
-            # nn.LeakyReLU(0.2, True),
-        )
-        self.up1 = nn.Sequential(
-            nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(ngf*2, ngf, kernel_size=4, stride=2, padding=1), # (64, 64, 64) <- (128, 32, 32)
-            # nn.InstanceNorm2d(ngf, affine=True, track_running_stats=True),
-            
-        )
-        self.adain1 = AdaIN(ngf)
-        self.up2 = nn.Sequential(
-            nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(ngf*4, ngf*2, kernel_size=4, stride=2, padding=1), # (128, 32, 32) <- (256, 16, 16)
-            # nn.InstanceNorm2d(ngf*2, affine=True, track_running_stats=True),
-            
-        )
-        self.adain2 = AdaIN(ngf*2)
-        self.up3 = nn.Sequential(
-            nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(ngf*8, ngf*4, kernel_size=4, stride=2, padding=1), # (256, 16, 16) <- (512, 8, 8)
-            # nn.InstanceNorm2d(ngf*4, affine=True, track_running_stats=True),
-            
-        )
-        self.adain3 = AdaIN(ngf*4)
-        self.up4 = nn.Sequential(
-            nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(ngf*16, ngf*8, kernel_size=4, stride=2, padding=1), # (512, 8, 8) <- (1024, 4, 4)
-            # nn.InstanceNorm2d(ngf*8, affine=True, track_running_stats=True),
-            
-        )
-        self.adain4 = AdaIN(ngf*8)
-        self.up5 = nn.Sequential(
-            nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(ngf*32, ngf*16, kernel_size=4, stride=2, padding=1), # (1024, 4, 4) <- (2048, 2, 2)
-            # nn.InstanceNorm2d(ngf*16, affine=True, track_running_stats=True),
-            
-        )
-        self.adain5 = AdaIN(ngf*16)
-        self.up6 = nn.Sequential(
-            nn.ConvTranspose2d(ngf*64, ngf*32, kernel_size=4, stride=2, padding=1), # (2048, 2, 2) <- (4096, 1, 1)
-            # nn.InstanceNorm2d(ngf*32, affine=True, track_running_stats=True),
-            
-        )
-        self.adain6 = AdaIN(ngf*32)
+class Ge(nn.Module):
+    """Generator network."""
+    def __init__(self, input_nc, output_nc, conv_dim=128, repeat_num=8):
+        super(Ge, self).__init__()
 
-    def forward(self, code):
-        x0, x1, x2, x3, x4, x5, x6 = code
-        x = self.up6(x6) # (2048, 2, 2) <- (4096, 1, 1)
-        x = self.adain6(x, x5)
-        x = self.up5(x) # (1024, 4, 4) <- (2048, 2, 2)
-        x = self.adain5(x, x4)
-        x = self.up4(x) # (512, 8, 8) <- (1024, 4, 4)
-        x = self.adain4(x, x3)
-        x = self.up3(x) # (256, 16, 16) <- (512, 8, 8)
-        x = self.adain3(x, x2)
-        x = self.up2(x) # (128, 32, 32) <- (256, 16, 16)
-        x = self.adain2(x, x1)
-        x = self.up1(x) # (64, 64, 64) <- (128, 32, 32)
-        x = self.adain1(x, x0)
-        x = self.outc(x) # (1, 64, 64) <- (64, 64, 64)
+        affine = False
+        instance = False
+        layers = []
+        layers.append(nn.Conv2d(input_nc, conv_dim, kernel_size=7, stride=1, padding=3, bias=False))
+        layers.append(nn.InstanceNorm2d(conv_dim, affine=affine, track_running_stats=instance))
+        layers.append(nn.ReLU(inplace=True))
+
+        # Down-sampling layers.
+        curr_dim = conv_dim
+
+        # Bottleneck layers.
+        for i in range(repeat_num):
+            layers.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
+
+        # Up-sampling layers.
+
+        layers.append(nn.Conv2d(curr_dim, output_nc, kernel_size=7, stride=1, padding=3, bias=False))
+        layers.append(nn.Tanh())
+        self.main = nn.Sequential(*layers)
+
+    def forward(self, x, c):
+        # Replicate spatially and concatenate domain information.
+        # Note that this type of label conditioning does not work at all if we use reflection padding in Conv2d.
+        # This is because instance normalization ignores the shifting (or bias) effect.
+        # c = c.view(c.size(0), c.size(1), 1, 1)
+        # c = c.repeat(1, 1, x.size(2), x.size(3))
+        # x = torch.cat([x, c], dim=1)
+        # x0 = self._shortcut(x)
+        # x = torch.cat([x, x0], dim=1)
+        x = self.main(x)
+        x_t = x.transpose(2, 3)
+        x = (x + x_t)/2
+        return x
+
+    def _shortcut(self, x):
+        x = (x + 1)*my_util.distance[-1]
+        m_max = torch.tensor(my_util.distance[-1], dtype=torch.float, device=x.device)
+        m_min = torch.tensor(0, dtype=torch.float, device=x.device)
+        x = torch.where(x > m_max, m_max, x)
+        x = (x - m_min)/(m_max - m_min)*2 - 1
         return x
 
 class AdaIN(nn.Module):
@@ -1391,12 +1529,119 @@ class AdaIN(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.mean = nn.Conv2d(indim, outdim, kernel_size=1)
         self.var = nn.Conv2d(indim, outdim, kernel_size=1)
+        self.LN = nn.LayerNorm([dim, 1, 1])
+        self.relu = nn.ReLU(True)
         self.IN = nn.InstanceNorm2d(outdim)
 
-    def forward(self, content, style):
-        style_pool = self.pool(style)
+    def forward(self, content):
+        style_pool = self.pool(content)
         mean = self.mean(style_pool)
+        mean = self.relu(self.LN(mean))
         var = self.var(style_pool)
+        var = self.relu(self.LN(var))
         content = self.IN(content)
 
         return mean*content + var
+
+class AdaINResidualBlock(nn.Module):
+    """Residual Block with instance normalization."""
+    def __init__(self, dim_in, dim_out):
+        super(AdaINResidualBlock, self).__init__()
+        affine = False
+        instance = False
+        self.main = nn.Sequential(
+            spectral_norm(nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=1, padding=1, bias=False)),
+            AdaIN(dim_out),
+            nn.ReLU(inplace=True),
+            spectral_norm(nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False)),
+            AdaIN(dim_out),
+            # Shrinkage(dim_out)
+        )
+        self.relu = nn.ReLU(True)
+
+    def forward(self, x):
+        x = x + self.main(x)
+        return x
+
+class Shrinkage(nn.Module):
+    """Citation:
+    Zhao, Minghang, et al. 
+    "Deep residual shrinkage networks for fault diagnosis." 
+    IEEE Transactions on Industrial Informatics 16.7 (2019): 4681-4690.
+    """
+    def __init__(self, channel):
+        super().__init__()
+        self.gap = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Conv2d(channel, channel, kernel_size=1),
+            nn.LayerNorm([channel, 1, 1]),
+            nn.ReLU(True),
+            nn.Conv2d(channel, channel, kernel_size=1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        x_abs = torch.abs(x)
+        x_gap = self.gap(x_abs)
+        x_fc = self.fc(x_gap)
+        # soft thresholding
+        sub = x_abs - x_fc
+        zeros = sub - sub
+        n_sub = torch.max(sub, zeros)
+        x = torch.sign(x)*n_sub
+        return x
+
+class Dense(nn.Module):
+    def __init__(self, indim, outdim, n=4):
+        super(Dense, self).__init__()
+        assert (indim + indim) == outdim
+        self.model = nn.ModuleList([])
+        for i in range(n):
+            self.model.append(
+                nn.Sequential(
+                    spectral_norm(nn.Conv2d(indim + i*indim//n, indim//n, kernel_size=3, padding=1)),
+                    nn.InstanceNorm2d(indim//n, affine=True, track_running_stats=True),
+                    nn.ReLU(True)
+                )
+            )
+    
+    def forward(self, x0):
+        x1 = x0
+        for conv in self.model:
+            x0 = x1
+            x1 = conv(x0)
+            x1 = torch.cat([x0, x1], dim=1)
+        return x1
+
+class Self_Attn(nn.Module):
+    """ Self attention Layer"""
+    def __init__(self, in_dim):
+        super(Self_Attn,self).__init__()
+        self.chanel_in = in_dim
+        
+        self.query_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim//8 , kernel_size= 1)
+        self.key_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim//8 , kernel_size= 1)
+        self.value_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim , kernel_size= 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+        self.softmax  = nn.Softmax(dim=-1) #
+    def forward(self,x):
+        """
+            inputs :
+                x : input feature maps( B X C X W X H)
+            returns :
+                out : self attention value + input feature 
+                attention: B X N X N (N is Width*Height)
+        """
+        m_batchsize,C,width ,height = x.size()
+        proj_query  = self.query_conv(x).view(m_batchsize,-1,width*height).permute(0,2,1) # B X CX(N)
+        proj_key =  self.key_conv(x).view(m_batchsize,-1,width*height) # B X C x (*W*H)
+        energy =  torch.bmm(proj_query,proj_key) # transpose check
+        attention = self.softmax(energy) # BX (N) X (N) 
+        proj_value = self.value_conv(x).view(m_batchsize,-1,width*height) # B X C X N
+
+        out = torch.bmm(proj_value,attention.permute(0,2,1) )
+        out = out.view(m_batchsize,C,width,height)
+        
+        out = self.gamma*out + x
+        return out

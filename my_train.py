@@ -122,6 +122,7 @@ if __name__ == '__main__':
             model.eval()
             my_util.val = True
             temp = np.zeros(3)
+            tempB = np.zeros(3)
             for i, data in enumerate(dataset):
                 model.set_input(data)
                 model.test()
@@ -137,12 +138,16 @@ if __name__ == '__main__':
                 last = score(data_A, answer[0][0])
                 first = score(answer[0][0], data_B)
                 # print(np.array([org, last, first]))
+                # if data['domain'] == 0:
                 temp += np.array([org, last, first])
+                # else:
+                #     tempB += np.array([org, last, first])
                 # print(org, last, first)
                 # model.compute_visuals()
                 # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
                 # time.sleep(1)
-            print(temp/dataset_size)
+            print(temp/(dataset_size))
+            # print(tempB/(dataset_size//2))
             # model.compute_visuals()
             # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
             result_train.append(list(temp/dataset_size))

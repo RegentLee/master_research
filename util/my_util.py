@@ -31,8 +31,15 @@ def RMSD(A, B):
 def MAE(A, B):
     A = distance[-1]/2*(A + 1)
     B = distance[-1]/2*(B + 1)
+    A = np.where(A <= 18, A, 18)
+    B = np.where(B <= 18, B, 18)
     mae = np.sum(np.abs(A - B))/B.size
     return mae
+
+def COS(A, B):
+    A = A.flatten()
+    B = B.flatten()
+    return np.dot(A, B) / (np.linalg.norm(A) * np.linalg.norm(B))
 
 '''def DALI(A, B): not used
     """Citation:
@@ -141,9 +148,9 @@ def test(model, data):
     
     answer = model.fake_B.to('cpu').detach().numpy().copy()
     data_A = data['A'].numpy()[0][0]
-    data_A = (data_A + 1)*my_util.distance[-1]
+    data_A = (data_A + 1)*distance[-1]
     data_B = data['B'].numpy()[0][0]
-    m_max = my_util.distance[-1]
+    m_max = distance[-1]
     m_min = 0
     data_A = np.where(data_A > m_max, m_max, data_A)
     data_A = (data_A - m_min)/(m_max - m_min)*2 - 1
