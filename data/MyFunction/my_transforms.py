@@ -144,7 +144,8 @@ class mask:
 
     def __call__(self, A, B):
         if not my_util.val:    
-            p = np.random.rand()
+            # p = np.random.rand()
+            p = 1
             if p < 0.8:
                 # print(len(A[0]) - 256)
                 # n_m = min(len(A[0]) - 256, 5)
