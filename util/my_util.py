@@ -31,8 +31,10 @@ def RMSD(A, B):
 def MAE(A, B):
     A = distance[-1]/2*(A + 1)
     B = distance[-1]/2*(B + 1)
-    A = np.where(A <= 18, A, 18)
-    B = np.where(B <= 18, B, 18)
+    # A = np.where(A <= 18, A, 18)
+    # B = np.where(B <= 18, B, 18)
+    A[0] = 0; A[-1] = 0; A[:, 0] = 0; A[:, -1] = 0
+    B[0] = 0; B[-1] = 0; B[:, 0] = 0; B[:, -1] = 0
     mae = np.sum(np.abs(A - B))/B.size
     return mae
 

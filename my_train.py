@@ -210,10 +210,10 @@ if __name__ == '__main__':
             result_val.append(list(temp/valset_size))
 
     result_train = pd.DataFrame(result_train)
-    result_train.to_csv('result/result_train_' + str(opt.LOOid) + '.csv')
+    result_train.to_csv('result/result_train.csv')
 
     result_val = pd.DataFrame(result_val)
-    result_val.to_csv('result/result_val_' + str(opt.LOOid) + '.csv')
+    result_val.to_csv('result/result_val.csv')
     '''
     for i, data in enumerate(valset):
         model.set_input(data)

@@ -82,7 +82,7 @@ class MyPix2PixModel(BaseModel):
         self.visual_names = ['a', 'fake_B', 'b', 'real_B']
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
         if self.isTrain:
-            self.model_names = ['G', 'D', 'Pixel']
+            self.model_names = ['G', 'D'] #, 'Pixel']
         else:  # during test time, only load G
             self.model_names = ['G']
         # define networks (both generator and discriminator)
@@ -95,7 +95,7 @@ class MyPix2PixModel(BaseModel):
         self.net = Generator(opt.input_nc, opt.output_nc)
         # self.net = networks.UnetGenerator(opt.input_nc, opt.output_nc, 6, opt.ngf, norm_layer=networks.get_norm_layer(norm_type=opt.norm), use_dropout=(not opt.no_dropout))
         self.netG = networks.init_net(self.net, opt.init_type, opt.init_gain, self.gpu_ids)
-        summary(self.net, input_data=[torch.zeros([1, 2, 240, 240]), torch.zeros([1, 2])], depth=15) #, torch.zeros(1, dtype=torch.long)
+        summary(self.net, input_data=[torch.zeros([1, 2, 88, 88]), torch.zeros([1, 2])], depth=15) #, torch.zeros(1, dtype=torch.long)
 
         if self.isTrain:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
             # self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
@@ -105,7 +105,7 @@ class MyPix2PixModel(BaseModel):
             self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
             netPixel = MyPixelDiscriminator(opt.output_nc, nn.Identity)
             self.netPixel = networks.init_net(netPixel, opt.init_type, opt.init_gain, self.gpu_ids)
-            summary(self.netD, input_data=[torch.zeros([1, 3, 263, 263]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
+            summary(self.netD, input_data=[torch.zeros([1, 3, 492, 492]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
             summary(self.netPixel, input_data=[torch.zeros([1, 1, 240, 240]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
 
         if self.isTrain:
@@ -118,7 +118,7 @@ class MyPix2PixModel(BaseModel):
             self.criterionTri = nn.TripletMarginLoss(margin=1, p=1.0) # torch.nn.MSELoss()# torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr*4, betas=(opt.beta1, 0.999))
+            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr*2, betas=(opt.beta1, 0.999))
             self.optimizer_Pixel = torch.optim.Adam(self.netPixel.parameters(), lr=opt.lr*4, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
@@ -416,6 +416,10 @@ class MyPix2PixModel(BaseModel):
         # self.loss_G_L1 += self.criterionTri(self.fake_B, self.real_B)
         # combine loss and calculate gradients
         self.loss_G = self.loss_G_GAN + self.loss_G_L1
+
+        fake_B_t = self.fake_B.transpose(2, 3)
+        flip = torch.sum(self.fake_B - fake_B_t)/torch.numel(self.fake_B)
+        self.loss_G += flip*1000
 
         # self.idt_B = self.netG(self.real_B)
         # self.loss_idt = self.criterionL2(self.idt_B, self.real_B) * 5
@@ -1278,6 +1282,7 @@ class ResidualBlock(nn.Module):
             spectral_norm(nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False)),
             nn.InstanceNorm2d(dim_out, affine=affine, track_running_stats=instance),
             # Shrinkage(dim_out)
+            # SEBlock(dim_out)
         )
         self.relu = nn.ReLU(True)
 
@@ -1367,8 +1372,8 @@ class Generator(nn.Module):
     def __init__(self, input_nc, output_nc, conv_dim=64, repeat_num=9):
         super(Generator, self).__init__()
 
-        affine = True
-        instance = True
+        affine = False
+        instance = False
         layers = []
         layers.append(spectral_norm(nn.Conv2d(input_nc, conv_dim, kernel_size=7, stride=1, padding=3, bias=False)))
         layers.append(nn.InstanceNorm2d(conv_dim, affine=affine, track_running_stats=instance))
@@ -1397,7 +1402,7 @@ class Generator(nn.Module):
             layers.append(nn.InstanceNorm2d(curr_dim, affine=affine, track_running_stats=instance))
             layers.append(nn.ReLU(inplace=True))'''
             layers.append(ResidualBlock(curr_dim, curr_dim))
-            # layers.append(Self_Attn(curr_dim))
+        # layers.append(Self_Attn(curr_dim))
 
         # Up-sampling layers.
         for i in range(1):
@@ -1448,8 +1453,11 @@ class Generator(nn.Module):
 
         # x = self.tanh(self._shortcut(x[:, 0]) + x1)
 
-        x_t = x1.transpose(2, 3)
-        x = (x1 + x_t)/2
+        if my_util.val:
+            x_t = x1.transpose(2, 3)
+            x = (x1 + x_t)/2
+        else:
+            x = x1
 
         return x
 
@@ -1645,3 +1653,20 @@ class Self_Attn(nn.Module):
         
         out = self.gamma*out + x
         return out
+
+class SEBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1), # C*H*W -> C*1*1
+            nn.Conv2d(dim, dim//16, kernel_size=1),  # C*1*1 -> (C/16)*1*1
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim//16, dim, kernel_size=1),  # (C/16)*1*1 -> C*1*1
+            nn.Sigmoid()
+            # nn.Softmax(dim=1)
+        )
+
+    def forward(self, x):
+        x0 = x
+        x = self.model(x)
+        return x0*x

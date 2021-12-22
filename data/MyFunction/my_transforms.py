@@ -66,6 +66,7 @@ class CE:
         image = np.floor((image / (np.max(image)))*63)
         return image
 
+'''
 def crop(x, y, imgA, imgB):
     assert(len(imgA[0]) == len(imgB[0]))
     if len(imgA[0]) % 64 !=0:
@@ -91,6 +92,7 @@ def crop(x, y, imgA, imgB):
         idx_j = 0
     idx = [i if i < 8 else 15 - i for i in idx]
     return crop_imgA, crop_imgB, idx
+'''
 
 class clip:
     def __init__(self):
@@ -178,3 +180,22 @@ class pad:
         if len(img[0]) < 256:
             img = self.padding(img)
         return img
+
+
+class crop:
+    def __init__(self) -> None:
+        pass
+
+    def __call__(self, imgA, imgB, pos):
+        assert(len(imgA[0]) == len(imgB[0]))
+        if len(imgA[0]) > 256:
+            x = np.random.randint(len(imgA[0]) - 256)
+            y = np.random.randint(len(imgA[0]) - 256)
+
+            A = imgA[:, x:x + 256, y:y + 256]
+            B = imgB[:, x:x + 256, y:y + 256]
+            pos = pos[:, x:x + 256, y:y + 256]
+
+            return A, B, pos
+        else:
+            return imgA, imgB, pos

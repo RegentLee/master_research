@@ -64,6 +64,7 @@ class CryptoDataset(BaseDataset):
         data = CryptoSiteData_creator.CryptoSiteDataCreator(opt)
 
         matrix_size = [len(i) for i in data.data_A]
+        print(matrix_size)
         print(np.array(matrix_size) - np.array([len(i) for i in data.data_B]))
         input_n = max(matrix_size)
         
@@ -108,6 +109,7 @@ class CryptoDataset(BaseDataset):
 
         self.rotate = my_transforms.rotate()
         self.choose = my_transforms.mask()
+        self.crop = my_transforms.crop()
 
         '''
         self.x = my_util.x
@@ -171,6 +173,8 @@ class CryptoDataset(BaseDataset):
         '''if not my_util.val:
             A, B = self.rotate(A, B)'''
         A, B, Pos = self.choose(A, B)
+        # if not my_util.val:
+        #     A, B, Pos = self.crop(A, B, Pos)
 
         idx = 0# torch.tensor(self.idx[index%len(self.idx)], dtype=torch.long)
 

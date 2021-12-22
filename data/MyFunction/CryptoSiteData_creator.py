@@ -38,12 +38,15 @@ class CryptoSiteDataCreator:
     def clean_up(self):
         data_A = []
         data_B = []
+        id = []
         for i in range(len(self.data_A)):
-            if len(self.data_A[i]) == len(self.data_B[i]):
+            if len(self.data_A[i]) == len(self.data_B[i]) and len(self.data_A[i]) < 500:
                 data_A.append(self.data_A[i])
                 data_B.append(self.data_B[i])
+                id.append(i + 1)
         self.data_A = data_A
         self.data_B = data_B
+        print(id)
 
 
 if __name__ == "__main__":
