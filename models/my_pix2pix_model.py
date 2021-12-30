@@ -95,7 +95,7 @@ class MyPix2PixModel(BaseModel):
         self.net = Generator(opt.input_nc, opt.output_nc)
         # self.net = networks.UnetGenerator(opt.input_nc, opt.output_nc, 6, opt.ngf, norm_layer=networks.get_norm_layer(norm_type=opt.norm), use_dropout=(not opt.no_dropout))
         self.netG = networks.init_net(self.net, opt.init_type, opt.init_gain, self.gpu_ids)
-        summary(self.net, input_data=[torch.zeros([1, 2, 88, 88]), torch.zeros([1, 2])], depth=15) #, torch.zeros(1, dtype=torch.long)
+        summary(self.net, input_data=[torch.zeros([1, 2, 256, 256]), torch.zeros([1, 2])], depth=15) #, torch.zeros(1, dtype=torch.long)
 
         if self.isTrain:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
             # self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
@@ -105,8 +105,8 @@ class MyPix2PixModel(BaseModel):
             self.netD = networks.init_net(netD, opt.init_type, opt.init_gain, self.gpu_ids)
             netPixel = MyPixelDiscriminator(opt.output_nc, nn.Identity)
             self.netPixel = networks.init_net(netPixel, opt.init_type, opt.init_gain, self.gpu_ids)
-            summary(self.netD, input_data=[torch.zeros([1, 3, 492, 492]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
-            summary(self.netPixel, input_data=[torch.zeros([1, 1, 240, 240]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
+            summary(self.netD, input_data=[torch.zeros([1, 3, 256, 256]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
+            # summary(self.netPixel, input_data=[torch.zeros([1, 1, 240, 240]), torch.zeros([1, 1], dtype=torch.long)], depth=10)
 
         if self.isTrain:
             # define loss functions
@@ -230,6 +230,14 @@ class MyPix2PixModel(BaseModel):
         # self.loss_D_real = self.criterionGAN(real - fake, True)
         # combine loss and calculate gradients
         self.loss_D = self.loss_D_fake + self.loss_D_real#  + gp
+
+        # pred_fake_t = pred_fake.transpose(2, 3)
+        # flip = torch.sum(pred_fake - pred_fake_t)/torch.numel(pred_fake)
+        # self.loss_D += flip*25 
+
+        pred_real_t = pred_real.transpose(2, 3)
+        flip_real = torch.sum(pred_real - pred_real_t)/torch.numel(pred_real)
+        self.loss_D += flip_real*25 
 
         if self.opt.gan_mode == 'wgangp':
             gp, _ = networks.cal_gradient_penalty(self.netD, real_AB, fake_AB, self.device, self.idx)
@@ -419,7 +427,7 @@ class MyPix2PixModel(BaseModel):
 
         fake_B_t = self.fake_B.transpose(2, 3)
         flip = torch.sum(self.fake_B - fake_B_t)/torch.numel(self.fake_B)
-        self.loss_G += flip*1000
+        self.loss_G += flip*50
 
         # self.idt_B = self.netG(self.real_B)
         # self.loss_idt = self.criterionL2(self.idt_B, self.real_B) * 5
@@ -1427,10 +1435,10 @@ class Generator(nn.Module):
         
         layers = []
         layers.append(nn.Conv2d(curr_dim, output_nc, kernel_size=7, stride=1, padding=3, bias=False))
-        layers.append(nn.Tanh())
+        # layers.append(nn.Tanh())
         self.out = nn.Sequential(*layers)
 
-        # self.tanh = nn.Tanh()
+        self.tanh = nn.Tanh()
 
         self.pas = nn.MaxPool2d(2)
 
@@ -1443,7 +1451,7 @@ class Generator(nn.Module):
         # x = torch.cat([x, c], dim=1)
         # x0 = self._shortcut(x)
         # x = torch.cat([x, x0], dim=1)
-        # x0 = self._shortcut(x)
+        x0 = self._shortcut(x[:, 0])
         x2 = self.down(x)
         x1 = self.main(x2)
         x1 = self._pad(x1, x2)
@@ -1451,7 +1459,7 @@ class Generator(nn.Module):
         x1 = self._pad(x1, x)
         x1 = self.out(x1)
 
-        # x = self.tanh(self._shortcut(x[:, 0]) + x1)
+        x1 = self.tanh(self._shortcut(x[:, 0]) + x1)
 
         if my_util.val:
             x_t = x1.transpose(2, 3)
