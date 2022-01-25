@@ -8,9 +8,9 @@ import random
 
 
 class preprocess:
-    def __init__(self, input_n):
-        self.input_n = input_n
-        
+    def __init__(self):
+        pass
+
     def __call__(self, image):
         image = image.astype('float32')
         # image = (image / (np.max(image)/2)) - 1
@@ -24,8 +24,8 @@ class preprocess:
         return image
 
 class preprocessB:
-    def __init__(self, input_n):
-        self.input_n = input_n
+    def __init__(self):
+        pass
         
     def __call__(self, image):
         image = image.astype('float32')

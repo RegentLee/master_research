@@ -69,10 +69,8 @@ class CryptoSiteDataMDCreator:
                 data_A.append(self.data_A[i])
                 data_B.append(self.data_B[i])
                 id.append(i + 1)
-                print(i + 1, len(self.data_A[i]))
         self.data_A = data_A
         self.data_B = data_B
-        print(id)
 
 class CryptoSiteDataMDTestCreator:
     def __init__(self, opt):
@@ -125,10 +123,8 @@ class CryptoSiteDataMDTestCreator:
                 data_A.append(self.data_A[i])
                 data_B.append(self.data_B[i])
                 id.append(i + 1)
-                print(i + 1, len(self.data_A[i]))
         self.data_A = data_A
         self.data_B = data_B
-        print(id)
 
 class RMSD:
     def __init__(self, val=False):

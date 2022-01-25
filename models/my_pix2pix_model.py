@@ -155,9 +155,6 @@ class MyPix2PixModel(BaseModel):
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
         # self.idx = input['idx'].to(self.device)
         self.a = self._shortcut(self.a)
-        
-        self.domain = input['domain'].to(self.device)
-        self.domain = self._to_onehot(self.domain)
 
     def _shortcut(self, x):
         x = (x + 1)*my_util.distance[-1]

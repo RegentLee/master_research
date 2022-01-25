@@ -67,16 +67,10 @@ class CryptoDataset(BaseDataset):
         # print(matrix_size)
         # print(np.array(matrix_size) - np.array([len(i) for i in data.data_B]))
         # input_n = max(matrix_size)
-        input_n = 256
-
-        for i in range(4):
-            if input_n%4 == 0:
-                break
-            input_n += 1
         
         transform_A = transforms.Compose([
             # my_transforms.clip(),
-            my_transforms.preprocess(input_n),
+            my_transforms.preprocess(),
             transforms.ToTensor(),
             # my_transforms.pad()
             # transforms.Normalize((0.5,), (0.5,)),
@@ -84,7 +78,7 @@ class CryptoDataset(BaseDataset):
 
         transform_B = transforms.Compose([
             # my_transforms.clip(),
-            my_transforms.preprocessB(input_n),
+            my_transforms.preprocessB(),
             transforms.ToTensor(),
             # my_transforms.pad()
             ])
@@ -93,8 +87,6 @@ class CryptoDataset(BaseDataset):
 
         data_A = data.data_A
         data_B = data.data_B
-        print(data_A[0])
-        print(len(data_B))
         # if not my_util.val:
         #     for i in range(len(data_B)):
         #         if len(data_A[i*1001]) != len(data_B[i]):
@@ -112,8 +104,6 @@ class CryptoDataset(BaseDataset):
             self.data_B = [transform_B(i) for i in data_B]
 
         self.rotate = my_transforms.rotate()
-        self.choose = my_transforms.mask()
-        self.crop = my_transforms.crop()
 
         self.x = my_util.x
         self.y = my_util.y
@@ -190,15 +180,8 @@ class CryptoDataset(BaseDataset):
 
         if not my_util.val:
             A, B = self.rotate(A, B)
-        A, B, Pos = self.choose(A, B)
-        # if not my_util.val:
-        #     A, B, Pos = self.crop(A, B, Pos)
-
-        idx = 0# torch.tensor(self.idx[index%len(self.idx)], dtype=torch.long)
-
-        dm = 0# self.domain[index]
         
-        return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path, 'idx': idx, 'domain':dm, 'Pos': Pos}
+        return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path}
 
     def __len__(self):
         """Return the total number of images."""
