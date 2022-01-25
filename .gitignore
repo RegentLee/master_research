@@ -46,4 +46,4 @@ result*
 jobs.*
 *.o*
 *.e*
-CryptoSiteData/apo/*
+CryptoSiteData/apo/apo_*
