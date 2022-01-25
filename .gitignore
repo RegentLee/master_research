@@ -42,7 +42,7 @@ test/data/legacy_serialized.pt
 *~
 .idea
 
-result/
+result*
 jobs.*
 *.o*
 *.e*
