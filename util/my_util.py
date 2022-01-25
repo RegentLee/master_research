@@ -37,7 +37,16 @@ def MAE(A, B):
     B[0] = 0; B[-1] = 0; B[:, 0] = 0; B[:, -1] = 0
     mae = np.sum(np.abs(A - B))/B.size
     return mae
-
+'''
+def MAE(A, B):
+    A = distance[-1]/2*(A + 1)
+    B = distance[-1]/2*(B + 1)
+    l = int(len(A)*0.05/2)
+    A[:l] = 0; A[-l:]=0; A[:, :l]=0; A[:, -l:]=0;
+    B[:l] = 0; B[-l:]=0; B[:, :l]=0; B[:, -l:]=0;
+    mae = np.sum(np.abs(A - B))/B.size
+    return mae
+'''    
 def COS(A, B):
     A = A.flatten()
     B = B.flatten()

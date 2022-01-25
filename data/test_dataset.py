@@ -21,8 +21,9 @@ from data.MyFunction import my_transforms
 from util import my_util
 
 import numpy as np
+import torch
 
-class CryptoDataset(BaseDataset):
+class TestDataset(BaseDataset):
     """A template dataset class for you to implement custom datasets."""
     @staticmethod
     def modify_commandline_options(parser, is_train):
@@ -37,9 +38,6 @@ class CryptoDataset(BaseDataset):
         """
         # parser.add_argument('--new_dataset_option', type=float, default=1.0, help='new dataset option')
         # parser.set_defaults(max_dataset_size=10, new_dataset_option=2.0)  # specify dataset-specific default values
-
-        parser.add_argument('--matrix', type=str, default='Ca', help='input matrix')
-        parser.add_argument('--diff', type=bool, default=False)
         
         return parser
 
@@ -61,7 +59,7 @@ class CryptoDataset(BaseDataset):
         # define the default transform function. You can use <base_dataset.get_transform>; You can also define your custom transform function
         # self.transform = get_transform(opt)
         
-        data = CryptoSiteDataMD_creator.CryptoSiteDataMDCreator(opt)
+        data = CryptoSiteDataMD_creator.CryptoSiteDataMDTestCreator(opt)
 
         # matrix_size = [len(i) for i in data.data_A]
         # print(matrix_size)
@@ -203,3 +201,51 @@ class CryptoDataset(BaseDataset):
     def __len__(self):
         """Return the total number of images."""
         return max(len(self.A), len(self.data_B))
+
+
+def create_test_dataset(opt):
+    """Create a dataset given the option.
+
+    This function wraps the class CustomDatasetDataLoader.
+        This is the main interface between this package and 'train.py'/'test.py'
+
+    Example:
+        >>> from data import create_dataset
+        >>> dataset = create_dataset(opt)
+    """
+    data_loader = TestDatasetDataLoader(opt)
+    dataset = data_loader.load_data()
+    return dataset
+
+
+class TestDatasetDataLoader():
+    """Wrapper class of Dataset class that performs multi-threaded data loading"""
+
+    def __init__(self, opt):
+        """Initialize this class
+
+        Step 1: create a dataset instance given the name [dataset_mode]
+        Step 2: create a multi-threaded data loader.
+        """
+        self.opt = opt
+        self.dataset = TestDataset(opt)
+        print("dataset [%s] was created" % type(self.dataset).__name__)
+        self.dataloader = torch.utils.data.DataLoader(
+            self.dataset,
+            batch_size=opt.batch_size,
+            shuffle=False,
+            num_workers=int(opt.num_threads))
+
+    def load_data(self):
+        return self
+
+    def __len__(self):
+        """Return the number of data in the dataset"""
+        return min(len(self.dataset), self.opt.max_dataset_size)
+
+    def __iter__(self):
+        """Return a batch of data"""
+        for i, data in enumerate(self.dataloader):
+            if i * self.opt.batch_size >= self.opt.max_dataset_size:
+                break
+            yield data

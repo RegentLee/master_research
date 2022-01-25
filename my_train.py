@@ -21,11 +21,13 @@ See frequently asked questions at: https://github.com/junyanz/pytorch-CycleGAN-a
 import time
 from options.train_options import TrainOptions
 from data import create_dataset
+from data.test_dataset import create_test_dataset
 from models import create_model
 from util.visualizer import Visualizer
 
 import numpy as np
 import pandas as pd
+import pickle
 
 from util import my_util
 from data.MyFunction import my_transforms
@@ -36,8 +38,11 @@ if __name__ == '__main__':
     dataset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
     dataset_size = len(dataset)    # get the number of images in the dataset.
     print('The number of training images = %d' % dataset_size)
+    trainset = create_test_dataset(opt)  # create a dataset given opt.dataset_mode and other options
+    trainset_size = len(trainset)    # get the number of images in the dataset.
+    print('The number of training images = %d' % trainset_size)
     my_util.val = True
-    valset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
+    valset = create_test_dataset(opt)  # create a dataset given opt.dataset_mode and other options
     valset_size = len(valset)    # get the number of images in the dataset.
     print('The number of validation images = %d' % valset_size)
 
@@ -56,8 +61,8 @@ if __name__ == '__main__':
         epoch_iter = 0                  # the number of training iterations in current epoch, reset to 0 every epoch
         visualizer.reset()              # reset the visualizer: make sure it saves the results to HTML at least once every epoch
         
-        my_util.x = np.random.randint(0, 64)
-        my_util.y = np.random.randint(0, 64)
+        my_util.x = np.random.randint(0, 10)
+        my_util.y = np.random.randint(0, 10)
         my_util.val = False
         for name in model.model_names:
             if isinstance(name, str):
@@ -121,9 +126,10 @@ if __name__ == '__main__':
         if not opt.diff:
             model.eval()
             my_util.val = True
-            temp = np.zeros(3)
+            temp = [] # np.zeros(3)
             tempB = np.zeros(3)
-            for i, data in enumerate(dataset):
+            dt = []
+            for i, data in enumerate(trainset):
                 model.set_input(data)
                 model.test()
                 answer = model.fake_B.to('cpu').detach().numpy().copy()
@@ -137,22 +143,30 @@ if __name__ == '__main__':
                 org = score(data_A, data_B)
                 last = score(data_A, answer[0][0])
                 first = score(answer[0][0], data_B)
+                dt.append([data_A, answer[0][0], data_B])
                 # print(np.array([org, last, first]))
                 # if data['domain'] == 0:
-                temp += np.array([org, last, first])
+                temp.append([org, last, first])
+                tempB += np.array([org, last, first])
                 # else:
                 #     tempB += np.array([org, last, first])
                 # print(org, last, first)
                 # model.compute_visuals()
                 # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
                 # time.sleep(1)
-            print(temp/(dataset_size))
+            print(tempB/(trainset_size))
             # print(tempB/(dataset_size//2))
             # model.compute_visuals()
             # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
-            result_train.append(list(temp/dataset_size))
+            result_train.append(temp)
+            with open('result_' + opt.rname + '/result_train', 'wb') as f:
+                pickle.dump(result_train, f)
+            # result = pd.DataFrame(result_train)
+            # result.to_csv('result_' + opt.rname + '/result_train.csv')
 
-            temp = np.zeros(3)
+            temp = []
+            tempB = np.zeros(3)
+            dtv = []
             for i, data in enumerate(valset):
                 model.set_input(data)
                 model.test()
@@ -167,17 +181,23 @@ if __name__ == '__main__':
                 org = score(data_A, data_B)
                 last = score(data_A, answer[0][0])
                 first = score(answer[0][0], data_B)
-                temp += np.array([org, last, first])
+                dtv.append([data_A, answer[0][0], data_B])
+                temp.append([org, last, first])
+                tempB += np.array([org, last, first])
                 # model.compute_visuals()
                 # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
                 # time.sleep(1)
                 # print(np.array([org, last, first]))
                 # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
-            print(temp/valset_size)
+            print(tempB/valset_size)
             # if total_iters % opt.display_freq == 0:   # display images on visdom and save images to a HTML file
             model.compute_visuals()
             visualizer.display_current_results(model.get_current_visuals(), epoch, False)
-            result_val.append(list(temp/valset_size))
+            result_val.append(temp)
+            with open('result_' + opt.rname + '/result_val', 'wb') as f:
+                pickle.dump(result_val, f)
+            # result = pd.DataFrame(result_val)
+            # result.to_csv('result_' + opt.rname + '/result_val.csv')
         else:
             model.eval()
             temp = np.zeros(3)
@@ -212,8 +232,14 @@ if __name__ == '__main__':
     result_train = pd.DataFrame(result_train)
     result_train.to_csv('result/result_train.csv')
 
+    with open('result_' + opt.rname + '/train_' + str(epoch), 'wb') as f:
+        pickle.dump(dt, f)
+
     result_val = pd.DataFrame(result_val)
     result_val.to_csv('result/result_val.csv')
+
+    with open('result_' + opt.rname + '/val_' + str(epoch), 'wb') as f:
+        pickle.dump(dtv, f)
     '''
     for i, data in enumerate(valset):
         model.set_input(data)

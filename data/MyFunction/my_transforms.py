@@ -48,7 +48,7 @@ class rotate:
         
     def __call__(self, A, B):
         p = np.random.rand()
-        if p < 0.2:
+        if p < 0.5:
             A = self.Flip(A)
             B = self.Flip(B)
         return A, B
@@ -148,7 +148,7 @@ class mask:
         if not my_util.val:    
             # p = np.random.rand()
             p = 1
-            if p < 0.8:
+            if p < 0.5:
                 # print(len(A[0]) - 256)
                 # n_m = min(len(A[0]) - 256, 5)
                 # n_m = len(A[0]) - 240
