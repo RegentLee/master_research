@@ -105,7 +105,7 @@ class TestDataset(BaseDataset):
         if len(self.data_A) == len(self.data_B): # val data
             self.A = self.data_A
         else:
-            self.A = [self.data_A[i] for i in range(self.x, 39*1000, 10)]
+            self.A = [self.data_A[i] for i in range(self.x, len(self.data_A), 10)]
         '''
         self.A = []
         self.B = []
@@ -151,7 +151,7 @@ class TestDataset(BaseDataset):
             if len(self.data_A) == len(self.data_B): # val data
                 self.A = self.data_A
             else:
-                self.A = [self.data_A[i] for i in range(self.x, 39*1000, 10)]
+                self.A = [self.data_A[i] for i in range(self.x, len(self.data_A), 10)]
             '''
             for i in range(len(self.data_A)):
                 if not my_util.val:

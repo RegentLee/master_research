@@ -22,19 +22,21 @@ class CryptoSiteDataMDCreator:
         # dataload
         data_root = '/gs/hs0/tga-science/lee/master_research/CryptoSiteData/'
         if not my_util.val:
-            apo_root = data_root + 'apo/'
+            apo_root = data_root + 'apo_amber/'
             holo_root = data_root + 'train/'
             data_len = 80
 
+            no = [1, 3, 26, 51, 68]
+
             for i in range(data_len):
-                if os.path.isfile(apo_root + 'apo_' + str(i + 1)) and str(i + 1) != '68' and str(i + 1) != '26':
+                if os.path.isfile(apo_root + 'apo_' + str(i + 1)) and (i + 1 not in no):
                     with open(apo_root + 'apo_' + str(i + 1), 'rb') as f:
                         # temp = 
                         self.data_A += pickle.load(f)[:1000]
                     holo = md.load(holo_root + 'holo_' + str(i + 1) + '.pdb')
                     self.data_B.append(holo)
         else:
-            apo_root = data_root + 'apo/'
+            apo_root = data_root + 'apo_amber/'
             holo_root = data_root + 'train/'
             data_len = 80
 
@@ -59,6 +61,8 @@ class CryptoSiteDataMDCreator:
         if my_util.val:
             self.data_A = [self.matrix(apo) for apo in self.data_A]
         self.data_B = [self.matrix(holo) for holo in self.data_B]
+        # for i in range(len(self.data_B)):
+        #     print(i + 1, len(self.data_A[i*1000]), len(self.data_B[i]), len(self.data_A[i*1000]) - len(self.data_B[i]))
 
     def clean_up(self):
         data_A = []
@@ -89,12 +93,14 @@ class CryptoSiteDataMDTestCreator:
         # dataload
         data_root = '/gs/hs0/tga-science/lee/master_research/CryptoSiteData/'
         if not my_util.val:
-            apo_root = data_root + 'apo/'
+            apo_root = data_root + 'apo_amber/'
             holo_root = data_root + 'train/'
             data_len = 80
 
+            no = [1, 3, 26, 51, 68]
+
             for i in range(data_len):
-                if os.path.isfile(apo_root + 'apo_' + str(i + 1)) and str(i + 1) != '68' and str(i + 1) != '26':
+                if os.path.isfile(apo_root + 'apo_' + str(i + 1)) and (i + 1 not in no):
                     apo = md.load(holo_root + 'apo_' + str(i + 1) + '.pdb')
                     holo = md.load(holo_root + 'holo_' + str(i + 1) + '.pdb')
                     self.data_A.append(apo)

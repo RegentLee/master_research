@@ -11,7 +11,7 @@ def my_get_matrix(opt):
         Ca/Cb/... -- distance matrix function
     """
     if opt.matrix == 'Ca':
-        return Ca
+        return myCa
     elif opt.matrix == 'Cb':
         return Cb
 
@@ -29,6 +29,24 @@ def Ca(traj):
     temp = md.compute_contacts(traj, scheme='ca')
     d_matrix = md.geometry.squareform(temp[0],temp[1])
     return 10*d_matrix[0]
+
+def myCa(traj):
+    """Calculate the distance matrix with alpha Carbon
+
+    Parameters:
+        traj -- mdtraj.Trajectory
+
+    Returns distance matrix 
+        d_matrix (2d numpy.array) -- distance matrix
+    """
+
+    ca = [atom.index for atom in traj.topology.atoms if (atom.name == 'CA')]
+    temp = np.zeros((len(ca), len(ca)), dtype=float)
+    for i in range(0, len(ca)):
+        for j in range(i + 1, len(ca)):
+            temp[i][j] = np.sqrt(np.sum((traj.xyz[:, ca[i], :] - traj.xyz[:, ca[j], :])**2, axis=1))
+            temp[j][i] = temp[i][j]
+    return 10*temp
 
 def Cb(traj):
     """Calculate the distance matrix with beta Carbon while GLY use alpha Carbon
