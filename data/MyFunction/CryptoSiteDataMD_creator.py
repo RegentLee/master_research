@@ -6,7 +6,16 @@ from data.MyFunction.my_matrix import my_get_matrix
 from util import my_util
 
 class CryptoSiteDataMDCreator:
+    """Create Dataset
+
+    Create dataset after md
+    """
     def __init__(self, opt):
+        """init
+
+        Parameters:
+            opt (Option class) -- stores all the experiment flags; needs to be a subclass of BaseOptions
+        """
         self.data_A = []
         self.data_B = []
 
@@ -19,7 +28,12 @@ class CryptoSiteDataMDCreator:
 
 
     def data_load(self):
-        # dataload
+        """load data
+
+        load train data.
+        load input matrix to self.data_A
+        load output data(mdtraj) to self.data_B
+        """
         data_root = '/gs/hs0/tga-science/lee/master_research/CryptoSiteData/'
         if not my_util.val:
             apo_root = data_root + 'apo_amber/'
@@ -35,6 +49,7 @@ class CryptoSiteDataMDCreator:
                         self.data_A += pickle.load(f)[:1000]
                     holo = md.load(holo_root + 'holo_' + str(i + 1) + '.pdb')
                     self.data_B.append(holo)
+        '''
         else:
             apo_root = data_root + 'apo_amber/'
             holo_root = data_root + 'train/'
@@ -56,8 +71,17 @@ class CryptoSiteDataMDCreator:
                 holo = md.load(holo_root + 'holo_' + str(i + 1) + '.pdb')
                 self.data_A.append(apo)
                 self.data_B.append(holo)
+        '''
 
     def make_matrix(self):
+        """make distacne matrix
+
+        if my_util.val is true
+            make distance matrix from mdtraj in self.data_A and put it to self.data_A
+        else 
+            distance matrix is already in self.data_A 
+        make distance matrix from mdtraj in self.data_B and put it to self.data_B 
+        """
         if my_util.val:
             self.data_A = [self.matrix(apo) for apo in self.data_A]
         self.data_B = [self.matrix(holo) for holo in self.data_B]
@@ -65,6 +89,10 @@ class CryptoSiteDataMDCreator:
         #     print(i + 1, len(self.data_A[i*1000]), len(self.data_B[i]), len(self.data_A[i*1000]) - len(self.data_B[i]))
 
     def clean_up(self):
+        """clean up dataset
+
+        make sure len(input matrix) == len(output matrix)
+        """
         data_A = []
         data_B = []
         id = []
@@ -77,7 +105,16 @@ class CryptoSiteDataMDCreator:
         self.data_B = data_B
 
 class CryptoSiteDataMDTestCreator:
+    """Create Test Dataset
+
+    Create dataset from structure that download from protein data bank
+    """
     def __init__(self, opt):
+        """init
+
+        Parameters:
+            opt (Option class) -- stores all the experiment flags; needs to be a subclass of BaseOptions
+        """
         self.data_A = []
         self.data_B = []
 
@@ -90,7 +127,12 @@ class CryptoSiteDataMDTestCreator:
 
 
     def data_load(self):
-        # dataload
+        """load data
+
+        load test data.
+        load input data(mdtraj) to self.data_A
+        load output data(mdtraj) to self.data_B
+        """
         data_root = '/gs/hs0/tga-science/lee/master_research/CryptoSiteData/'
         if not my_util.val:
             apo_root = data_root + 'apo_amber/'
@@ -117,10 +159,19 @@ class CryptoSiteDataMDTestCreator:
                 self.data_B.append(holo)
 
     def make_matrix(self):
+        """make distacne matrix
+
+        make distance matrix from mdtraj in self.data_A and put it to self.data_A
+        make distance matrix from mdtraj in self.data_B and put it to self.data_B 
+        """
         self.data_A = [self.matrix(apo) for apo in self.data_A]
         self.data_B = [self.matrix(holo) for holo in self.data_B]
 
     def clean_up(self):
+        """clean up dataset
+
+        make sure len(input matrix) == len(output matrix)
+        """
         data_A = []
         data_B = []
         id = []

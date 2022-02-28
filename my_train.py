@@ -159,10 +159,10 @@ if __name__ == '__main__':
             # model.compute_visuals()
             # visualizer.display_current_results(model.get_current_visuals(), epoch, False)
             result_train.append(temp)
-            with open('result_' + opt.rname + '/result_train', 'wb') as f:
+            with open('result_' + opt.name + '/result_train', 'wb') as f:
                 pickle.dump(result_train, f)
             # result = pd.DataFrame(result_train)
-            # result.to_csv('result_' + opt.rname + '/result_train.csv')
+            # result.to_csv('result_' + opt.name + '/result_train.csv')
 
             temp = []
             tempB = np.zeros(3)
@@ -194,10 +194,11 @@ if __name__ == '__main__':
             model.compute_visuals()
             visualizer.display_current_results(model.get_current_visuals(), epoch, False)
             result_val.append(temp)
-            with open('result_' + opt.rname + '/result_val', 'wb') as f:
+            with open('result_' + opt.name + '/result_val', 'wb') as f:
                 pickle.dump(result_val, f)
             # result = pd.DataFrame(result_val)
-            # result.to_csv('result_' + opt.rname + '/result_val.csv')
+            # result.to_csv('result_' + opt.name + '/result_val.csv')
+        '''
         else:
             model.eval()
             temp = np.zeros(3)
@@ -228,17 +229,18 @@ if __name__ == '__main__':
                 # rmsd = np.sqrt(np.sum(((answer - data['B'].numpy())**2).flatten())/len(answer.flatten()))
             print(temp/valset_size)
             result_val.append(list(temp/valset_size))
+        '''
 
-    result_train = pd.DataFrame(result_train)
-    result_train.to_csv('result/result_train.csv')
+    # result_train = pd.DataFrame(result_train)
+    # result_train.to_csv('result/result_train.csv')
 
-    with open('result_' + opt.rname + '/train_' + str(epoch), 'wb') as f:
+    with open('result_' + opt.name + '/train_' + str(epoch), 'wb') as f:
         pickle.dump(dt, f)
 
-    result_val = pd.DataFrame(result_val)
-    result_val.to_csv('result/result_val.csv')
+    # result_val = pd.DataFrame(result_val)
+    # result_val.to_csv('result/result_val.csv')
 
-    with open('result_' + opt.rname + '/val_' + str(epoch), 'wb') as f:
+    with open('result_' + opt.name + '/val_' + str(epoch), 'wb') as f:
         pickle.dump(dtv, f)
     '''
     for i, data in enumerate(valset):

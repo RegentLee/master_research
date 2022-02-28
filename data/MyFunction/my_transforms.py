@@ -8,6 +8,7 @@ import random
 
 
 class preprocess:
+    """make disctance matrix to max 44Å"""
     def __init__(self):
         pass
 
@@ -24,6 +25,7 @@ class preprocess:
         return image
 
 class preprocessB:
+    """make disctance matrix to max 22Å"""
     def __init__(self):
         pass
         
@@ -40,6 +42,13 @@ class preprocessB:
         return image
 
 class rotate:
+    """randomly rotate disctance matrix
+    
+    Citation:
+        Kandathil, Shaun M., Joe G. Greener, and David T. Jones. 
+        "Prediction of interresidue contacts with DeepMetaPSICOV in CASP13." 
+        Proteins: Structure, Function, and Bioinformatics 87.12 (2019): 1092-1099.
+    """
     def __init__(self):
         self.Flip = transforms.Compose([
             transforms.RandomVerticalFlip(p=1),
@@ -52,6 +61,10 @@ class rotate:
             A = self.Flip(A)
             B = self.Flip(B)
         return A, B
+
+#############################################
+#                 not use                   #
+#############################################
 '''
 def rotate(image):
     img = image[::-1][:, ::-1]

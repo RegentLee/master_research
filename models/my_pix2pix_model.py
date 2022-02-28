@@ -66,9 +66,6 @@ class MyPix2PixModel(BaseModel):
         if is_train:
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
             parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
-
-            parser.add_argument('--rname', type=str, default='', help='result name')
-
         return parser
 
     def __init__(self, opt):
@@ -582,7 +579,15 @@ class MyUNetD(nn.Module):
 
 
 class MyPixelDiscriminator(nn.Module):
-    def __init__(self, input_nc, norm_layer=nn.BatchNorm2d):
+    """Defines a PatchGAN discriminator"""
+    def __init__(self, input_nc, norm_layer=nn.Identity):
+        """Construct a PatchGAN discriminator
+
+        Parameters:
+            input_nc (int)  -- the number of channels in input images
+            norm_layer      -- normalization layer
+                               we use spectral norm here, so when you use other norm layer, remember to delete the spectral_norm
+        """
         super(MyPixelDiscriminator, self).__init__()
 
         ndf = 64
@@ -650,7 +655,6 @@ class ResidualBlock(nn.Module):
 class Generator(nn.Module):
     """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
 
-    We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
     def __init__(self, input_nc, output_nc, conv_dim=64, repeat_num=6):
         """Construct a Resnet-based generator
@@ -658,11 +662,10 @@ class Generator(nn.Module):
         Parameters:
             input_nc (int)      -- the number of channels in input images
             output_nc (int)     -- the number of channels in output images
-            ngf (int)           -- the number of filters in the last conv layer
-            norm_layer          -- normalization layer
-            use_dropout (bool)  -- if use dropout layers
-            n_blocks (int)      -- the number of ResNet blocks
-            padding_type (str)  -- the name of padding layer in conv layers: reflect | replicate | zero
+            conv_dim (int)      -- the number of filters in the first conv layer
+            repeat_num (int)    -- the number of ResNet blocks
+
+        we use spectral norm here, so when you use other norm layer, remember to delete the spectral_norm
         """
         super(Generator, self).__init__()
 
@@ -756,6 +759,8 @@ class Generator(nn.Module):
         return x
 
     def _shortcut(self, x):
+        """max 44Å to max 22Å
+        """
         x = (x + 1)*my_util.distance[-1]
         m_max = torch.tensor(my_util.distance[-1], dtype=torch.float, device=x.device)
         m_min = torch.tensor(0, dtype=torch.float, device=x.device)
@@ -764,6 +769,8 @@ class Generator(nn.Module):
         return x
 
     def _pad(self, x1, x2):
+        """pad x1 size to x2 size
+        """
         assert len(x1[0][0]) <= len(x2[0][0])
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]

@@ -16,14 +16,13 @@ def my_get_matrix(opt):
         return Cb
 
 def Ca(traj):
-    """Calculate the distance matrix with alpha Carbon
+    """Calculate the distance matrix with alpha Carbon by mdtraj, not good
 
     Parameters:
         traj -- mdtraj.Trajectory
 
     Returns distance matrix 
-        d_matrix[0] (2d numpy.array) -- distance matrix for first frame
-        d_matrix[-1] (2d numpy.array) -- distance matrix for last frame
+        10*d_matrix[0] (2d numpy.array) -- distance matrix
     """
 
     temp = md.compute_contacts(traj, scheme='ca')
@@ -31,13 +30,13 @@ def Ca(traj):
     return 10*d_matrix[0]
 
 def myCa(traj):
-    """Calculate the distance matrix with alpha Carbon
+    """Calculate the distance matrix with alpha Carbon by coordinate
 
     Parameters:
         traj -- mdtraj.Trajectory
 
     Returns distance matrix 
-        d_matrix (2d numpy.array) -- distance matrix
+        10*temp (2d numpy.array) -- distance matrix
     """
 
     ca = [atom.index for atom in traj.topology.atoms if (atom.name == 'CA')]
@@ -55,8 +54,7 @@ def Cb(traj):
         traj -- mdtraj.Trajectory
 
     Returns distance matrix 
-        d_matrix[0] (2d numpy.array) -- distance matrix for first frame
-        d_matrix[-1] (2d numpy.array) -- distance matrix for last frame
+        10*first (2d numpy.array) -- distance matrix
     """
 
     topology = traj.topology
