@@ -366,12 +366,12 @@ class MyPix2PixModel(BaseModel):
         ## pred_real = self.netD(real_AB)
         self.loss_G_GAN = self.criterionGAN(pred_fake, True, for_discriminator=False)
         # self.loss_G_GAN = self.criterionGAN(pred_fake, True) + self.criterionGAN(fake_all, True)
-        ## self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True, True)
-        ## self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False, True)
+        ## self.loss_G_fake = self.criterionGAN(pred_fake - pred_real, True, False)
+        ## self.loss_G_real = self.criterionGAN(pred_real - pred_fake, False, False)
         # self.loss_G_fake = self.criterionGAN(fake - real, True)
         # self.loss_G_real = self.criterionGAN(real - fake, False)
-        ## self.loss_G_GAN = (self.loss_G_fake + self.loss_G_real) * 0.5
-        
+        ## self.loss_G_GAN = self.loss_G_fake + self.loss_G_real
+
         '''
         # Fake
         fake_B = self.fake_B
